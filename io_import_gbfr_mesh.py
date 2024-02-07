@@ -21,57 +21,60 @@ def utils_set_mode(mode):
         
         
 def parse_skeleton(filepath, CurCollection):
-    f = open(os.path.splitext(filepath)[0] + ".skeleton", 'rb')
-    
-    armature_data = bpy.data.armatures.new("Armature")
-    armature_obj = bpy.data.objects.new("Armature", armature_data)
-    CurCollection.objects.link(armature_obj)
-    bpy.context.view_layer.objects.active = armature_obj
-    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    if os.path.isfile(os.path.splitext(filepath)[0] + ".skeleton"):
+        f = open(os.path.splitext(filepath)[0] + ".skeleton", 'rb')
         
-    f.seek(0x20)
-    
-    joint_count = int.from_bytes(f.read(4),byteorder='little')
-    joint_offsets = [f.tell() + int.from_bytes(f.read(4),byteorder='little') for _ in range(joint_count)]
-    
-    SkelTable = []
-    for i, offset in enumerate(joint_offsets):
-        f.seek(offset + 4)
-        scale = struct.unpack('<fff', f.read(4*3))
-        quat = struct.unpack('<ffff', f.read(4*4))
-        quat = mathutils.Quaternion((quat[3],quat[0],quat[1],quat[2]))
-        pos = struct.unpack('<fff', f.read(4*3))
-        _, parent_index, _ = f.read(4), int.from_bytes(f.read(2), byteorder='little'), f.read(2)
-        
-        SkelTable.append({"Pos":pos,"Rot":quat})
+        armature_data = bpy.data.armatures.new("Armature")
+        armature_obj = bpy.data.objects.new("Armature", armature_data)
+        CurCollection.objects.link(armature_obj)
+        bpy.context.view_layer.objects.active = armature_obj
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             
-        length = int.from_bytes(f.read(4),byteorder='little')
-        name = f.read(length).decode('ascii')
+        f.seek(0x20)
         
-        edit_bone = armature_obj.data.edit_bones.new(name)
-        edit_bone.use_connect = False
-        edit_bone.use_inherit_rotation = True
-        edit_bone.inherit_scale = 'FULL'
-        edit_bone.use_local_location = True
-        edit_bone.head = (0,0,0)
-        edit_bone.tail = (0,0.05,0)
+        joint_count = int.from_bytes(f.read(4),byteorder='little')
+        joint_offsets = [f.tell() + int.from_bytes(f.read(4),byteorder='little') for _ in range(joint_count)]
         
-        if parent_index != 65535:
-            edit_bone.parent = armature_obj.data.edit_bones[parent_index]
+        SkelTable = []
+        for i, offset in enumerate(joint_offsets):
+            f.seek(offset + 4)
+            scale = struct.unpack('<fff', f.read(4*3))
+            quat = struct.unpack('<ffff', f.read(4*4))
+            quat = mathutils.Quaternion((quat[3],quat[0],quat[1],quat[2]))
+            pos = struct.unpack('<fff', f.read(4*3))
+            _, parent_index, _ = f.read(4), int.from_bytes(f.read(2), byteorder='little'), f.read(2)
+            
+            SkelTable.append({"Pos":pos,"Rot":quat})
+                
+            length = int.from_bytes(f.read(4),byteorder='little')
+            name = f.read(length).decode('ascii')
+            
+            edit_bone = armature_obj.data.edit_bones.new(name)
+            edit_bone.use_connect = False
+            edit_bone.use_inherit_rotation = True
+            edit_bone.inherit_scale = 'FULL'
+            edit_bone.use_local_location = True
+            edit_bone.head = (0,0,0)
+            edit_bone.tail = (0,0.05,0)
+            
+            edit_bone["scale"] = scale
+            
+            if parent_index != 65535:
+                edit_bone.parent = armature_obj.data.edit_bones[parent_index]
 
-    utils_set_mode('POSE')
-    for x in range(joint_count):
-        pbone = armature_obj.pose.bones[x]
-        pbone.rotation_mode = 'QUATERNION'
-        pbone.rotation_quaternion = SkelTable[x]["Rot"]
-        pbone.location = SkelTable[x]["Pos"]
-    bpy.ops.pose.armature_apply()
-    utils_set_mode('OBJECT')
+        utils_set_mode('POSE')
+        for x in range(joint_count):
+            pbone = armature_obj.pose.bones[x]
+            pbone.rotation_mode = 'QUATERNION'
+            pbone.rotation_quaternion = SkelTable[x]["Rot"]
+            pbone.location = SkelTable[x]["Pos"]
+        bpy.ops.pose.armature_apply()
+        utils_set_mode('OBJECT')
 
-    bpy.ops.object.mode_set(mode='OBJECT')
-    f.close()
-    del f
-    return armature_obj
+        bpy.ops.object.mode_set(mode='OBJECT')
+        f.close()
+        del f
+        return armature_obj
 
 
 class MeshInfo:
@@ -85,6 +88,7 @@ class MeshInfo:
 
    
 def parse_mesh_info(filepath):
+    is_skeletal = os.path.isfile(os.path.splitext(filepath)[0] + ".skeleton")
     f = open(filepath, 'rb')
     
     mesh_info = MeshInfo()
@@ -92,15 +96,17 @@ def parse_mesh_info(filepath):
     init_offset = int.from_bytes(f.read(4),byteorder='little')
     if init_offset == 0x40:
         f.seek(0x16)
-    elif init_offset == 0x44:
+    elif is_skeletal:
         f.seek(0x1A)
     else:
-        raise Exception("Unhandled initial offset " + init_offset)
+        f.seek(0x18)
     deform_field_offset = int.from_bytes(f.read(2),byteorder='little')
     if init_offset == 0x40:
         f.seek(0xC)
-    elif init_offset == 0x44:
+    elif is_skeletal:
         f.seek(0x10)
+    else:
+        f.seek(0xE)
     lod_field_offset = int.from_bytes(f.read(2),byteorder='little')
     
     f.seek(init_offset + deform_field_offset)
@@ -146,7 +152,11 @@ def parse_mesh_info(filepath):
     
     section_count = int.from_bytes(f.read(4),byteorder='little')
     f.seek(8, 1)
-    if section_count == 4:
+    if section_count == 3:
+        f.seek(24, 1)
+        face_offset = int.from_bytes(f.read(8),byteorder='little')
+        f.seek(8, 1)
+    elif section_count == 4:
         f.seek(8, 1)
         weight_indices_offset = int.from_bytes(f.read(8),byteorder='little')
         f.seek(8, 1)
@@ -165,6 +175,9 @@ def parse_mesh_info(filepath):
     else:
         raise Exception("Unhandled mesh section count " + str(section_count) + " at " + str(f.tell()))
         
+    print(face_offset)
+    print(face_count)
+    
     mesh_info.face_count = face_count
     mesh_info.vertex_count = vertex_count
     mesh_info.materials = materials
@@ -178,8 +191,13 @@ def parse_mesh_info(filepath):
     return mesh_info
 
     
-def read_some_data(context, filepath):
+def read_some_data(context, filepath):    
+    CurCollection = bpy.data.collections.new("Mesh Collection")
+    bpy.context.scene.collection.children.link(CurCollection)
+    
     mesh_info = parse_mesh_info(filepath)
+    armature = parse_skeleton(filepath, CurCollection)
+    
     DeformJointsTable = mesh_info.deform_joints
     Materials = mesh_info.materials
     
@@ -206,30 +224,26 @@ def read_some_data(context, filepath):
         f.seek(2,1)
         UVTable.append(struct.unpack('<ee', f.read(2*2)))
     
-    f.seek(mesh_info.weight_indices_offset)
-    for n in range(vert_count):
-        i0 = int.from_bytes(f.read(2),byteorder='little')
-        i1 = int.from_bytes(f.read(2),byteorder='little')
-        i2 = int.from_bytes(f.read(2),byteorder='little')
-        i3 = int.from_bytes(f.read(2),byteorder='little')
-        
-        weight_indices = [DeformJointsTable[i0],DeformJointsTable[i1],DeformJointsTable[i2],DeformJointsTable[i3]]
-        WeightIndicesTable.append(weight_indices)
+    if armature is not None:
+        f.seek(mesh_info.weight_indices_offset)
+        for n in range(vert_count):
+            i0 = int.from_bytes(f.read(2),byteorder='little')
+            i1 = int.from_bytes(f.read(2),byteorder='little')
+            i2 = int.from_bytes(f.read(2),byteorder='little')
+            i3 = int.from_bytes(f.read(2),byteorder='little')
+            
+            weight_indices = [DeformJointsTable[i0],DeformJointsTable[i1],DeformJointsTable[i2],DeformJointsTable[i3]]
+            WeightIndicesTable.append(weight_indices)
     
-    f.seek(mesh_info.weight_offset)
-    for n in range(vert_count):
-        WeightTable.append(struct.unpack('<HHHH', f.read(2*4)))
+        f.seek(mesh_info.weight_offset)
+        for n in range(vert_count):
+            WeightTable.append(struct.unpack('<HHHH', f.read(2*4)))
     
     f.seek(mesh_info.face_offset)
     for n in range(face_count):
         FaceTable.append(struct.unpack('<III', f.read(4*3)))
     f.close()
     del f
-        
-    CurCollection = bpy.data.collections.new("Mesh Collection")
-    bpy.context.scene.collection.children.link(CurCollection)
-
-    armature = parse_skeleton(filepath, CurCollection)
     
     mesh1 = bpy.data.meshes.new("Mesh")
     mesh1.use_auto_smooth = True
@@ -243,10 +257,7 @@ def read_some_data(context, filepath):
         bm.verts.new((v[0],v[1],v[2]))
     list = [v for v in bm.verts]
     for f in FaceTable:
-        try:
-            bm.faces.new((list[f[0]],list[f[1]],list[f[2]]))
-        except:
-            continue             
+        bm.faces.new((list[f[0]],list[f[1]],list[f[2]]))
     bm.to_mesh(mesh)
 
     uv_layer = bm.loops.layers.uv.verify()
@@ -264,17 +275,18 @@ def read_some_data(context, filepath):
     bm.to_mesh(mesh)
         
     if NormalTable != []:
-        mesh1.normals_split_custom_set(Normals)    
+        mesh1.normals_split_custom_set(Normals)
         
-    for v in range(vert_count):
-        for n in range(4):
-            group_name = armature.data.bones[WeightIndicesTable[v][n]].name
-            if obj.vertex_groups.find(group_name) == -1:
-                TempVG = obj.vertex_groups.new(name = group_name)
-            else:
-                TempVG = obj.vertex_groups[obj.vertex_groups.find(group_name)]
-            
-            TempVG.add([v], float(WeightTable[v][n]) / 65535, 'ADD')
+    if armature is not None:
+        for v in range(vert_count):
+            for n in range(4):
+                group_name = armature.data.bones[WeightIndicesTable[v][n]].name
+                if obj.vertex_groups.find(group_name) == -1:
+                    TempVG = obj.vertex_groups.new(name = group_name)
+                else:
+                    TempVG = obj.vertex_groups[obj.vertex_groups.find(group_name)]
+                
+                TempVG.add([v], float(WeightTable[v][n]) / 65535, 'ADD')
 
     for n, m in enumerate(Materials):
         mat = bpy.data.materials.new(name="Material")
@@ -282,11 +294,11 @@ def read_some_data(context, filepath):
         for p in range(m[0], m[1]):
             obj.data.polygons[p].material_index = n
         
-
-    ArmMod = obj.modifiers.new("Armature","ARMATURE")
-    ArmMod.object = armature
-    obj.parent = armature
-    armature.rotation_euler = (1.5707963705062866,0,0)
+    if armature is not None:
+        ArmMod = obj.modifiers.new("Armature","ARMATURE")
+        ArmMod.object = armature
+        obj.parent = armature
+        armature.rotation_euler = (1.5707963705062866,0,0)
     
     obj.select_set(True)
     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
