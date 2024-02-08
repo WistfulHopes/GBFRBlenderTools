@@ -98,6 +98,8 @@ def parse_mesh_info(filepath):
         f.seek(0x16)
     elif init_offset == 0x48:
         f.seek(0x18)
+    elif init_offset == 0x44:
+        f.seek(0x18)
     elif is_skeletal:
         f.seek(0x1A)
     else:
@@ -107,16 +109,20 @@ def parse_mesh_info(filepath):
         f.seek(0xC)
     elif init_offset == 0x48:
         f.seek(0xE)
+    elif init_offset == 0x44:
+        f.seek(0xE)
     elif is_skeletal:
         f.seek(0x10)
     else:
         f.seek(0xE)
     lod_field_offset = int.from_bytes(f.read(2),byteorder='little')
     
-    deform_offset_add = 0
+    deform_offset_change = 0
     if init_offset == 0x48:
-        deform_offset_add = 4
-    f.seek(init_offset + deform_field_offset + deform_offset_add)
+        deform_offset_change = 4
+    elif init_offset == 0x44:
+        deform_offset_change = -4
+    f.seek(init_offset + deform_field_offset + deform_offset_change)
     deform_offset = int.from_bytes(f.read(4),byteorder='little')
     f.seek(deform_offset - 4, 1)
     
@@ -128,7 +134,10 @@ def parse_mesh_info(filepath):
     
     mesh_info.deform_joints = deform_joints
 
-    f.seek(init_offset + lod_field_offset)
+    lod_offset_take = 0
+    if init_offset == 0x44:
+        lod_offset_take = 4
+    f.seek(init_offset + lod_field_offset - lod_offset_take)
     lod_offset = int.from_bytes(f.read(4),byteorder='little')
     lod_offset_take = 4
     if init_offset == 0x48:
@@ -172,6 +181,14 @@ def parse_mesh_info(filepath):
         f.seek(8, 1)
         weight_offset = int.from_bytes(f.read(8),byteorder='little')
         f.seek(8, 1)
+        face_offset = int.from_bytes(f.read(8),byteorder='little')
+        f.seek(8, 1)
+    elif section_count == 5:
+        f.seek(8, 1)
+        weight_indices_offset = int.from_bytes(f.read(8),byteorder='little')
+        f.seek(8, 1)
+        weight_offset = int.from_bytes(f.read(8),byteorder='little')
+        f.seek(24, 1)
         face_offset = int.from_bytes(f.read(8),byteorder='little')
         f.seek(8, 1)
     elif section_count == 6:
