@@ -96,6 +96,8 @@ def parse_mesh_info(filepath):
     init_offset = int.from_bytes(f.read(4),byteorder='little')
     if init_offset == 0x40:
         f.seek(0x16)
+    elif init_offset == 0x48:
+        f.seek(0x18)
     elif is_skeletal:
         f.seek(0x1A)
     else:
@@ -103,13 +105,18 @@ def parse_mesh_info(filepath):
     deform_field_offset = int.from_bytes(f.read(2),byteorder='little')
     if init_offset == 0x40:
         f.seek(0xC)
+    elif init_offset == 0x48:
+        f.seek(0xE)
     elif is_skeletal:
         f.seek(0x10)
     else:
         f.seek(0xE)
     lod_field_offset = int.from_bytes(f.read(2),byteorder='little')
     
-    f.seek(init_offset + deform_field_offset)
+    deform_offset_add = 0
+    if init_offset == 0x48:
+        deform_offset_add = 4
+    f.seek(init_offset + deform_field_offset + deform_offset_add)
     deform_offset = int.from_bytes(f.read(4),byteorder='little')
     f.seek(deform_offset - 4, 1)
     
@@ -123,7 +130,10 @@ def parse_mesh_info(filepath):
 
     f.seek(init_offset + lod_field_offset)
     lod_offset = int.from_bytes(f.read(4),byteorder='little')
-    f.seek(lod_offset - 4, 1)
+    lod_offset_take = 4
+    if init_offset == 0x48:
+        lod_offset_take = 0
+    f.seek(lod_offset - lod_offset_take, 1)
     
     lod_count = int.from_bytes(f.read(4),byteorder='little')
     
