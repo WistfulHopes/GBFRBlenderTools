@@ -200,6 +200,12 @@ def parse_mesh_info(filepath):
     
     return mesh_info
 
+def get_relative_mmesh_path(filepath):
+    filename = os.path.basename(filepath)
+    filename = os.path.splitext(filename)[0]
+    mesh_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(filepath))))
+    additional = ("model_streaming", "lod0", filename + ".mmesh")
+    return os.path.join(mesh_path, *additional)
     
 def read_some_data(context, filepath):    
     CurCollection = bpy.data.collections.new("Mesh Collection")
@@ -211,7 +217,11 @@ def read_some_data(context, filepath):
     DeformJointsTable = mesh_info.deform_joints
     Materials = mesh_info.materials
     
-    f = open(os.path.splitext(filepath)[0] + ".mmesh", 'rb')
+    relative_mmesh_path = get_relative_mmesh_path(filepath)
+    if (os.path.exists(relative_mmesh_path)):
+        f = open(relative_mmesh_path, 'rb')
+    else:
+        f = open(os.path.splitext(filepath)[0] + ".mmesh", 'rb')
     
     vert_count = mesh_info.vertex_count
     face_count = mesh_info.face_count
