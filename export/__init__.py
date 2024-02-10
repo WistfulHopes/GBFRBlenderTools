@@ -40,6 +40,7 @@ def write_some_data(context, filepath):
     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.flip_normals()
+    bpy.ops.mesh.sort_elements(type='MATERIAL')
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
     mesh.calc_tangents()
@@ -49,6 +50,9 @@ def write_some_data(context, filepath):
     armature = obj.find_armature()
     
     section_length_table = []
+    
+    vert_count = 0
+    face_count = 0
     
     for face in mesh.polygons:
         for vert_id, loop_id in zip(face.vertices, face.loop_indices):
@@ -65,6 +69,7 @@ def write_some_data(context, filepath):
             vert_buffer.append(struct.pack('<e', loop.bitangent_sign))
             uv = obj.data.uv_layers.active.data[loop_id].uv
             vert_buffer.append(struct.pack('<ee', uv[0], uv[1]))
+            vert_count += 1
             
             vert_table[vert_id] = vert_buffer
             
@@ -76,7 +81,7 @@ def write_some_data(context, filepath):
         for elm in vert[1]:
             f.write(elm)
 
-    section_length_table.append({'start': 0, 'count': f.tell()})
+    section_length_table.append({'Offset': 0, 'Size': f.tell()})
 
     mesh_info = parse_mesh_info(filepath)
 
@@ -114,23 +119,24 @@ def write_some_data(context, filepath):
         for id in weight_id_table:
             f.write(id)
 
-        section_length_table.append({'start': weight_id_start, 'count': f.tell() - weight_id_start})
+        section_length_table.append({'Offset': weight_id_start, 'Size': f.tell() - weight_id_start})
         
         weight_start = f.tell()
         
         for weight in weight_table:
             f.write(weight)
         
-        section_length_table.append({'start': weight_start, 'count': f.tell() - weight_start})        
+        section_length_table.append({'Offset': weight_start, 'Size': f.tell() - weight_start})        
 
     face_start = f.tell()
 
     for face in mesh.polygons:
         f.write(struct.pack('<I', face.vertices[0]))
         f.write(struct.pack('<I', face.vertices[1]))
-        f.write(struct.pack('<I', face.vertices[2]))        
+        f.write(struct.pack('<I', face.vertices[2]))       
+        face_count += 3
 
-    section_length_table.append({'start': face_start, 'count': f.tell() - face_start})     
+    section_length_table.append({'Offset': face_start, 'Size': f.tell() - face_start})     
 
     f.close()
     
@@ -144,11 +150,14 @@ def write_some_data(context, filepath):
     
     sub_mesh_table = []
     chunk_table = []
-    
+
+    sub_mesh_count = -1
+
     for i, material in enumerate(mesh.materials):
         chunk = material.name.split(".")
         if chunk[0] not in sub_mesh_table:
             sub_mesh_table.append(chunk[0])
+            sub_mesh_count += 1
         
         chunk_start = -1
         chunk_end = -1
@@ -158,11 +167,11 @@ def write_some_data(context, filepath):
                 chunk_start = face.index * 3
             elif chunk_start != -1 and face.material_index != i:
                 break
-        chunk_table.append({'start': chunk_start, 'count': chunk_end - chunk_start, 'chunk': chunk[0], 'material': chunk[1]})
+        chunk_table.append({'Offset': chunk_start, 'Count': chunk_end - chunk_start, 'SubMeshID': sub_mesh_count, 'MaterialID': int(chunk[1]), 'Unk1': 0, 'Unk2': 0})
     
-    j.write(json.dumps(section_length_table))
-    j.write(json.dumps(sub_mesh_table))
-    j.write(json.dumps(chunk_table))
+    jobj = {'MeshBuffers': section_length_table, 'Chunks': chunk_table, 'VertCount': vert_count, 'PolyCountX3': face_count, 'BufferTypes': 11, 'SubMeshes': sub_mesh_table}
+    
+    j.write(json.dumps(jobj, indent=2))
     j.close()
     
     return {'FINISHED'}
