@@ -10,6 +10,7 @@ bl_info = {
 }
 
 from .Entities.ModelInfo import ModelInfo
+from .Entities.ModelSkeleton import ModelSkeleton
 import bpy
 import bmesh
 import mathutils
@@ -23,7 +24,9 @@ def utils_set_mode(mode):
         
 def parse_skeleton(filepath, CurCollection):
     if os.path.isfile(os.path.splitext(filepath)[0] + ".skeleton"):
-        f = open(os.path.splitext(filepath)[0] + ".skeleton", 'rb')
+        buf = open(os.path.splitext(filepath)[0] + ".skeleton", 'rb').read()
+        buf = bytearray(buf)    
+        skeleton = ModelSkeleton.GetRootAs(buf, 0)
         
         armature_data = bpy.data.armatures.new("Armature")
         armature_obj = bpy.data.objects.new("Armature", armature_data)
@@ -31,24 +34,16 @@ def parse_skeleton(filepath, CurCollection):
         bpy.context.view_layer.objects.active = armature_obj
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
             
-        f.seek(0x20)
-        
-        joint_count = int.from_bytes(f.read(4),byteorder='little')
-        joint_offsets = [f.tell() + int.from_bytes(f.read(4),byteorder='little') for _ in range(joint_count)]
-        
         SkelTable = []
-        for i, offset in enumerate(joint_offsets):
-            f.seek(offset + 4)
-            scale = struct.unpack('<fff', f.read(4*3))
-            quat = struct.unpack('<ffff', f.read(4*4))
-            quat = mathutils.Quaternion((quat[3],quat[0],quat[1],quat[2]))
-            pos = struct.unpack('<fff', f.read(4*3))
-            _, parent_index, _ = f.read(4), int.from_bytes(f.read(2), byteorder='little'), f.read(2)
+        for n in range(skeleton.BodyLength()):
+            bone = skeleton.Body(n)
+            pos = (bone.Position().X(), bone.Position().Y(), bone.Position().Z())
+            quat = (bone.Quat().W(), bone.Quat().X(), bone.Quat().Y(), bone.Quat().Z())
+            parent_index = bone.ParentId()
             
             SkelTable.append({"Pos":pos,"Rot":quat})
-                
-            length = int.from_bytes(f.read(4),byteorder='little')
-            name = f.read(length).decode('ascii')
+            
+            name = bone.Name().decode('ascii')
             
             edit_bone = armature_obj.data.edit_bones.new(name)
             edit_bone.use_connect = False
@@ -58,13 +53,11 @@ def parse_skeleton(filepath, CurCollection):
             edit_bone.head = (0,0,0)
             edit_bone.tail = (0,0.05,0)
             
-            edit_bone["scale"] = scale
-            
             if parent_index != 65535:
                 edit_bone.parent = armature_obj.data.edit_bones[parent_index]
 
         utils_set_mode('POSE')
-        for x in range(joint_count):
+        for x in range(skeleton.BodyLength()):
             pbone = armature_obj.pose.bones[x]
             pbone.rotation_mode = 'QUATERNION'
             pbone.rotation_quaternion = SkelTable[x]["Rot"]
@@ -73,8 +66,7 @@ def parse_skeleton(filepath, CurCollection):
         utils_set_mode('OBJECT')
 
         bpy.ops.object.mode_set(mode='OBJECT')
-        f.close()
-        del f
+        
         return armature_obj
 
 
@@ -162,7 +154,10 @@ def read_some_data(context, filepath):
         bm.verts.new((v[0],v[1],v[2]))
     list = [v for v in bm.verts]
     for f in FaceTable:
-        bm.faces.new((list[f[0]],list[f[1]],list[f[2]]))
+        try:
+            bm.faces.new((list[f[0]],list[f[1]],list[f[2]]))
+        except:
+            pass
     bm.to_mesh(mesh)
 
     uv_layer = bm.loops.layers.uv.verify()
@@ -192,18 +187,22 @@ def read_some_data(context, filepath):
                     TempVG = obj.vertex_groups[obj.vertex_groups.find(group_name)]
                 
                 TempVG.add([v], float(WeightTable[v][n]) / 65535, 'ADD')
-                
+    
+    mat_counter = 0
+    
     for i in range(mesh_info.SubMeshesLength()):
         sub_mesh = mesh_info.SubMeshes(i)
         for j in range(LOD.ChunksLength()):
             chunk = LOD.Chunks(j)
             if chunk.SubMesh() != i:
                 continue
-            mat = bpy.data.materials.new(name=sub_mesh.Name().decode())
+            mat = bpy.data.materials.new(name=sub_mesh.Name().decode() + "." + str(chunk.Material()))
             obj.data.materials.append(mat)
 
             for p in range(chunk.Offset() // 3, chunk.Offset() // 3 + chunk.Count() // 3):
-                obj.data.polygons[p].material_index = n
+                obj.data.polygons[p].material_index = mat_counter
+            
+            mat_counter += 1
         
     if armature is not None:
         ArmMod = obj.modifiers.new("Armature","ARMATURE")
