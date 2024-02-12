@@ -66,7 +66,7 @@ def write_some_data(context, filepath):
             vert_buffer.append(b'\x00')
             vert_buffer.append(b'\x00')
             vert_buffer.append(struct.pack('<eee', loop.tangent[0], loop.tangent[1], loop.tangent[2]))
-            vert_buffer.append(struct.pack('<e', loop.bitangent_sign))
+            vert_buffer.append(struct.pack('<e', -loop.bitangent_sign))
             uv = obj.data.uv_layers.active.data[loop_id].uv
             vert_buffer.append(struct.pack('<ee', uv[0], uv[1]))
             vert_count += 1
@@ -100,6 +100,12 @@ def write_some_data(context, filepath):
                 if n >= len(v.groups):
                     weight_id_table.append(struct.pack('<H', 0))
                     weight_table.append(struct.pack('<H', 0))
+                    if n == 3:
+                        total_weight = 0
+                        for i in range(len(v.groups)):
+                            total_weight += int(v.groups[i].weight * 65535)
+                        if total_weight != 65535:
+                            weight_table[-4] = struct.pack('<H', int(v.groups[0].weight * 65535) + (65535 - total_weight))
                     continue
                 
                 group_name = obj.vertex_groups[v.groups[n].group].name     
@@ -113,6 +119,13 @@ def write_some_data(context, filepath):
                 
                 weight_id_table.append(struct.pack('<H', DeformJointsTable.index(i)))
                 weight_table.append(struct.pack('<H', int(v.groups[n].weight * 65535)))
+                
+                if n == 3:
+                    total_weight = 0
+                    for i in range(4):
+                        total_weight += int(v.groups[i].weight * 65535)
+                    if total_weight != 65535:
+                        weight_table[-4] = struct.pack('<H', int(v.groups[0].weight * 65535) + (65535 - total_weight))
                 
         weight_id_start = f.tell()
                 
