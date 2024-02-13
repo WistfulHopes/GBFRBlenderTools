@@ -9,25 +9,30 @@ bl_info = {
     "category": "Import-Export",
 }
 
-from .Entities.ModelInfo import ModelInfo
 import bpy
 import bmesh
 import mathutils
 import struct
 import os
 import json
+import random
+from .Entities.flatbuffers.builder import Builder
+from .Entities.ModelSkeleton import ModelSkeleton, StartBodyVector, ModelSkeletonStart, ModelSkeletonAddMagic, ModelSkeletonAddBody, ModelSkeletonEnd
+from .Entities.Bone import Bone, BoneStart, BoneAddA1, BoneAddParentId, BoneAddName, BoneAddPosition, BoneAddQuat, BoneAddScale, BoneEnd
+from .Entities.BoneInfo import BoneInfo, CreateBoneInfo
+from .Entities.Vec3 import Vec3, CreateVec3
+from .Entities.Quaternion import Quaternion, CreateQuaternion
 
 def utils_set_mode(mode):
     if bpy.ops.object.mode_set.poll():
         bpy.ops.object.mode_set(mode=mode, toggle=False)
         
-   
-def parse_mesh_info(filepath):
-    buf = open(filepath, 'rb').read()
-    buf = bytearray(buf)    
-    model_info = ModelInfo.GetRootAs(buf, 0)
-    
-    return model_info   
+def fix_normals(obj):
+    obj.select_set(True)
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.flip_normals()
+    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
 
 def write_some_data(context, filepath):
@@ -80,52 +85,118 @@ def write_some_data(context, filepath):
     for vert in vert_table.items():
         for elm in vert[1]:
             f.write(elm)
-
+    
     section_length_table.append({'Offset': 0, 'Size': f.tell()})
 
-    mesh_info = parse_mesh_info(filepath)
-
     DeformJointsTable = []
-    for n in range(mesh_info.BonesToWeightIndicesLength()):
-        DeformJointsTable.append(mesh_info.BonesToWeightIndices(n))
 
     weight_id_table = []
     weight_table = []
 
-    vgroup_names = {vgroup.index: vgroup.name for vgroup in obj.vertex_groups}
+    BoneTable = []
 
     if armature is not None:
+        builder = Builder(0)
+
+        for n, bone in enumerate(armature.data.bones):
+            DeformJointsTable.append(n)
+            
+            parent = bone.parent
+            if parent is None:
+                parent = 65535
+            else:
+                parent = armature.pose.bones.find(parent.name)
+            name = builder.CreateString(bone.name)
+            mat = bone.matrix_local
+            if bone.parent:
+                mat = bone.parent.matrix_local.inverted() @ bone.matrix_local
+            
+            a1 = None
+            if n != 0:
+                a1 = CreateBoneInfo(builder, n, random.randint(0, 4294967294))
+                
+            BoneStart(builder)
+            if a1 is not None:
+                BoneAddA1(builder, a1)
+            BoneAddParentId(builder, parent)
+            BoneAddName(builder, name)
+            pos = CreateVec3(builder, mat.translation[0], mat.translation[1], mat.translation[2])
+            BoneAddPosition(builder, pos)
+            quat = mat.to_quaternion()
+            quat = CreateQuaternion(builder, quat[1], quat[2], quat[3], quat[0])           
+            BoneAddQuat(builder, quat)
+            scale = CreateVec3(builder, 1.0, 1.0, 1.0)
+            BoneAddScale(builder, scale)
+            bone = BoneEnd(builder)
+            
+            BoneTable.append(bone)
+
+        StartBodyVector(builder, len(BoneTable))
+        for b in reversed(BoneTable):
+            builder.PrependUOffsetTRelative(b)
+        body = builder.EndVector()
+
+        ModelSkeletonStart(builder)
+        ModelSkeletonAddMagic(builder, 20230729)
+        ModelSkeletonAddBody(builder, body)
+        body = ModelSkeletonEnd(builder)
+        builder.Finish(body)
+
+        buf = builder.Output()
+        skel = open(os.path.splitext(filepath)[0] + ".skeleton", 'wb')
+        skel.write(buf)
+        skel.close()
+        del skel
+        
+        for vg in obj.vertex_groups:
+          # limit total weights to 4
+          bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
+          # normalize all weights
+          bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL')
+          
         for v in mesh.vertices:
+            if len(v.groups) > 4:
+                fix_normals(obj)
+                raise Exception("Your model has one or more vertices with more than 4 vertex weights. To export successfully, make sure to use Limit Total on your model.")
             for n in range(4):
                 if n >= len(v.groups):
                     weight_id_table.append(struct.pack('<H', 0))
                     weight_table.append(struct.pack('<H', 0))
                     if n == 3:
+                        total_weight_float = 0
                         total_weight = 0
                         for i in range(len(v.groups)):
                             total_weight += int(v.groups[i].weight * 65535)
+                            total_weight_float += v.groups[i].weight
+                        if total_weight_float <= 0.99:
+                            fix_normals(obj)
+                            raise Exception("Your model has non-normalized weights. To export successfully, make sure to use Normalize All on your model.")
                         if total_weight != 65535:
-                            weight_table[-4] = struct.pack('<H', int(v.groups[0].weight * 65535) + (65535 - total_weight))
+                            index_max = max(range(4), key=weight_table[-4:].__getitem__)
+                            weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
                     continue
-                
-                group_name = obj.vertex_groups[v.groups[n].group].name     
+                    
+                group_name = obj.vertex_groups[v.groups[n].group].name
 
-                deform_id = -1
-                
                 for i, bone in enumerate(armature.data.bones):
                     if group_name == bone.name:
-                        deform_id = i
                         break
-                
-                weight_id_table.append(struct.pack('<H', DeformJointsTable.index(i)))
+
+                weight_id_table.append(struct.pack('<H', i))
                 weight_table.append(struct.pack('<H', int(v.groups[n].weight * 65535)))
                 
                 if n == 3:
+                    total_weight_float = 0
                     total_weight = 0
                     for i in range(4):
                         total_weight += int(v.groups[i].weight * 65535)
+                        total_weight_float += v.groups[i].weight
+                    if total_weight_float <= 0.99:
+                        fix_normals(obj)
+                        raise Exception("Your model has non-normalized weights. To export successfully, make sure to use Normalize All on your model.")
                     if total_weight != 65535:
-                        weight_table[-4] = struct.pack('<H', int(v.groups[0].weight * 65535) + (65535 - total_weight))
+                        index_max = max(range(4), key=weight_table[-4:].__getitem__)
+                        weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
                 
         weight_id_start = f.tell()
                 
@@ -153,12 +224,6 @@ def write_some_data(context, filepath):
 
     f.close()
     
-    obj.select_set(True)
-    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.flip_normals()
-    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-    
     j = open(os.path.splitext(filepath)[0] + ".json", 'w')
     
     sub_mesh_table = []
@@ -180,12 +245,17 @@ def write_some_data(context, filepath):
                 chunk_start = face.index * 3
             elif chunk_start != -1 and face.material_index != i:
                 break
+        if i == len(mesh.materials) - 1:
+            chunk_end += 3
         chunk_table.append({'Offset': chunk_start, 'Count': chunk_end - chunk_start, 'SubMeshID': sub_mesh_count, 'MaterialID': int(chunk[1]), 'Unk1': 0, 'Unk2': 0})
     
-    jobj = {'MeshBuffers': section_length_table, 'Chunks': chunk_table, 'VertCount': vert_count, 'PolyCountX3': face_count, 'BufferTypes': 11, 'SubMeshes': sub_mesh_table}
+    jobj = {'MeshBuffers': section_length_table, 'Chunks': chunk_table, 'VertCount': vert_count, 'PolyCountX3': face_count, 'BufferTypes': 11, 'SubMeshes': sub_mesh_table, 'BonesToWeightIndices': DeformJointsTable}
     
     j.write(json.dumps(jobj, indent=2))
     j.close()
+    del j
+    
+    fix_normals(obj)
     
     return {'FINISHED'}
 
@@ -200,13 +270,13 @@ from bpy.types import Operator
 class ExportSomeData(Operator, ImportHelper):
     """Importer for Granblue Fantasy Relink meshes"""
     bl_idname = "gbfr.export_mesh"  # important since its how bpy.ops.import_test.some_data is constructed
-    bl_label = "Import"
+    bl_label = "Export"
 
     # ImportHelper mix-in class uses this.
-    filename_ext = ".minfo"
+    filename_ext = ".mmesh"
 
     filter_glob: StringProperty(
-        default="*.minfo",
+        default="*.mmesh",
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
@@ -217,7 +287,7 @@ class ExportSomeData(Operator, ImportHelper):
 
 # Only needed if you want to add into a dynamic menu
 def menu_func_export(self, context):
-    self.layout.operator(ExportSomeData.bl_idname, text="Granblue Fantasy Relink .minfo")
+    self.layout.operator(ExportSomeData.bl_idname, text="Granblue Fantasy Relink .mmesh")
 
 
 # Register and add to the "file selector" menu (required to use F3 search "Text Export Operator" for quick access).
