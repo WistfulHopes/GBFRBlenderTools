@@ -1,9 +1,9 @@
 bl_info = {
     "name": "Granblue Fantasy Relink Mesh Exporter",
     "author": "WistfulHopes",
-    "version": (1, 0, 0),
-    "blender": (3, 0, 0),
-    "location": "File > Import-Export",
+    "version": (0, 2, 3),
+    "blender": (3, 5, 0),
+    "location": "File > Export",
     "description": "A script to export meshes from Granblue Fantasy Relink",
     "warning": "",
     "category": "Import-Export",
@@ -16,34 +16,74 @@ import struct
 import os
 import json
 import random
+import importlib
 from .Entities.flatbuffers.builder import Builder
 from .Entities.ModelSkeleton import ModelSkeleton, StartBodyVector, ModelSkeletonStart, ModelSkeletonAddMagic, ModelSkeletonAddBody, ModelSkeletonEnd
 from .Entities.Bone import Bone, BoneStart, BoneAddA1, BoneAddParentId, BoneAddName, BoneAddPosition, BoneAddQuat, BoneAddScale, BoneEnd
 from .Entities.BoneInfo import BoneInfo, CreateBoneInfo
 from .Entities.Vec3 import Vec3, CreateVec3
 from .Entities.Quaternion import Quaternion, CreateQuaternion
+from .Entities import MInfo_Converter
+
+def raise_noob_readable_exception(exception_string):
+    raise Exception(f"\n\n=====================\n!!!HEY YOU, READ THIS!!!\n=====================\n{exception_string}")
 
 def utils_set_mode(mode):
     if bpy.ops.object.mode_set.poll():
         bpy.ops.object.mode_set(mode=mode, toggle=False)
-        
+
 def fix_normals(obj):
     obj.select_set(True)
     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.flip_normals()
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
-
 def write_some_data(context, filepath):
+    # Get the path to flatc specified by user
+    flatc_file_path = bpy.context.preferences.addons[__name__].preferences.flatc_file_path
+    if os.path.exists(flatc_file_path) == False:
+        raise_noob_readable_exception("ERROR: Please put in the correct path to FlatBuffers/flatc.exe " + 
+        "in the preferences for the GBFR Exporter addon settings under: Preferences > Addons")
+    
+    # Check that a .minfo is present
+    minfo_path = filepath.replace(".mmesh", ".minfo")
+    if os.path.exists(minfo_path) == False:
+        raise_noob_readable_exception("ERROR: No .minfo found in export folder.\nMake sure the " + 
+        "model's original .minfo is in the folder you're exporting to.")
+    
     f = open(os.path.splitext(filepath)[0] + ".mmesh", 'wb')
+    
+    selected_obj = context.object
+    print (selected_obj.type)
+    # If the armature is selected, select its mesh
+    if selected_obj.type == 'ARMATURE':
+        for child_obj in selected_obj.children:
+            if child_obj.type == 'MESH':
+                bpy.context.view_layer.objects.active = child_obj
     
     obj = context.object
     mesh = obj.data
     
     obj.select_set(True)
+    #Apply all transforms to mesh
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.ops.object.mode_set(mode='EDIT', toggle=False)
     bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.quads_convert_to_tris(quad_method='FIXED') # Triangulate the mesh
+    
+#    # Select all UVs
+#    bpy.ops.uv.select_all(action='SELECT')
+#    # Select boundary edges of UV islands
+#    bpy.ops.uv.seams_from_islands(mark_seams=True)
+#    # Split mesh faces by seams
+#    bpy.context.tool_settings.mesh_select_mode = (False, True, False) # Set Edge Select
+#    # Select all edges marked as seams
+#    # ???
+#    # Split faces by selected edges
+#    bpy.ops.mesh.split()
+
     bpy.ops.mesh.flip_normals()
     bpy.ops.mesh.sort_elements(type='MATERIAL')
     bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -53,6 +93,9 @@ def write_some_data(context, filepath):
     vert_table = {}
     
     armature = obj.find_armature()
+    if armature == None: # No armature attached to mesh, abort
+        raise_noob_readable_exception("ERROR: The selected mesh has no armature.\n" 
+        + "Your model needs to have an armature.")
     
     section_length_table = []
     
@@ -157,7 +200,7 @@ def write_some_data(context, filepath):
         for v in mesh.vertices:
             if len(v.groups) > 4:
                 fix_normals(obj)
-                raise Exception("Your model has one or more vertices with more than 4 vertex weights. To export successfully, make sure to use Limit Total on your model.")
+                raise_noob_readable_exception("Your model has one or more vertices with more than 4 vertex weights.\nTo export successfully, make sure to use Limit Total on your model.")
             for n in range(4):
                 if n >= len(v.groups):
                     weight_id_table.append(struct.pack('<H', 0))
@@ -170,7 +213,9 @@ def write_some_data(context, filepath):
                             total_weight_float += v.groups[i].weight
                         if total_weight_float <= 0.99:
                             fix_normals(obj)
-                            raise Exception("Your model has non-normalized weights. To export successfully, make sure to use Normalize All on your model.")
+                            raise_noob_readable_exception("Your model has non-normalized weights.\n"
+                            +"To export successfully, make sure to use Normalize All on your model.\n\n"
+                            +"You may also be missing weights on some vertices, you cannot have geometry with 0 weights.")
                         if total_weight != 65535:
                             index_max = max(range(4), key=weight_table[-4:].__getitem__)
                             weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
@@ -193,7 +238,9 @@ def write_some_data(context, filepath):
                         total_weight_float += v.groups[i].weight
                     if total_weight_float <= 0.99:
                         fix_normals(obj)
-                        raise Exception("Your model has non-normalized weights. To export successfully, make sure to use Normalize All on your model.")
+                        raise_noob_readable_exception("Your model has non-normalized weights.\n"
+                        + "To export successfully, make sure to use Normalize All on your model.\n\n"
+                        + "You may also be missing weights on some vertices, you cannot have geometry with 0 weights.")
                     if total_weight != 65535:
                         index_max = max(range(4), key=weight_table[-4:].__getitem__)
                         weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
@@ -257,6 +304,16 @@ def write_some_data(context, filepath):
     
     fix_normals(obj)
     
+#    minfo_fbs_path = os.path.join(os.path.dirname(flatc_file_path),"MInfo_ModelInfo.fbs")
+    # Get the exported JSON
+    minfo_path = os.path.splitext(filepath)[0] + ".minfo"
+    json_path = os.path.splitext(filepath)[0] + ".json"
+
+#    raise Exception (f"{minfo_fbs_path}")
+    # Run the MInfo_Converter here
+    importlib.reload(MInfo_Converter) # RELOAD THE SCRIPT WHY ARE YOU SO BAD AT THIS BLENDER?????!!!!!
+    MInfo_Converter.convert_minfo(flatc_file_path, minfo_path, json_path)
+    
     return {'FINISHED'}
 
 
@@ -271,19 +328,33 @@ class ExportSomeData(Operator, ImportHelper):
     """Importer for Granblue Fantasy Relink meshes"""
     bl_idname = "gbfr.export_mesh"  # important since its how bpy.ops.import_test.some_data is constructed
     bl_label = "Export"
-
+    
     # ImportHelper mix-in class uses this.
     filename_ext = ".mmesh"
 
     filter_glob: StringProperty(
-        default="*.mmesh",
+        default="*.mmesh;*.minfo", #Show .minfo files in selector, but always set the extension to mmesh
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
     def execute(self, context):
+        self.report({'INFO'}, f"Export Finished!")
         return write_some_data(context, self.filepath)
 
+class AddonPreferences(bpy.types.AddonPreferences):
+    bl_idname = __name__
+    
+    # Define a custom property for storing the file path
+    flatc_file_path: StringProperty(
+        name="flatc.exe filepath",
+        description="File path to flatc.exe be used for export.",
+        subtype='FILE_PATH',
+    )
+    
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "flatc_file_path")
 
 # Only needed if you want to add into a dynamic menu
 def menu_func_export(self, context):
@@ -293,11 +364,13 @@ def menu_func_export(self, context):
 # Register and add to the "file selector" menu (required to use F3 search "Text Export Operator" for quick access).
 def register():
     bpy.utils.register_class(ExportSomeData)
+    bpy.utils.register_class(AddonPreferences)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
 
 def unregister():
     bpy.utils.unregister_class(ExportSomeData)
+    bpy.utils.unregister_class(AddonPreferences)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 
 
