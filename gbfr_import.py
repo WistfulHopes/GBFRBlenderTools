@@ -5,47 +5,47 @@ import struct
 import os
 from .Entities.ModelInfo import ModelInfo
 from .Entities.ModelSkeleton import ModelSkeleton
-from .utils import raise_noob_readable_exception
+from .utils import format_exception, utils_set_mode, utils_select_active
 
-def utils_set_mode(mode):
-    if bpy.ops.object.mode_set.poll():
-        bpy.ops.object.mode_set(mode=mode, toggle=False)
-        
         
 def parse_skeleton(filepath, CurCollection):
     if os.path.isfile(os.path.splitext(filepath)[0] + ".skeleton"):
         buf = open(os.path.splitext(filepath)[0] + ".skeleton", 'rb').read()
-        buf = bytearray(buf)    
-        skeleton = ModelSkeleton.GetRootAs(buf, 0)
+        buf = bytearray(buf)
+        skeleton = ModelSkeleton.GetRootAs(buf, 0) # Get skeleton info root in byte array
         
+        # Create an armature
         armature_data = bpy.data.armatures.new("Armature")
         armature_obj = bpy.data.objects.new("Armature", armature_data)
         CurCollection.objects.link(armature_obj)
         bpy.context.view_layer.objects.active = armature_obj
-        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+        utils_set_mode('EDIT')
             
         SkelTable = []
-        for n in range(skeleton.BodyLength()):
-            bone = skeleton.Body(n)
+        for n in range(skeleton.BodyLength()): # For bone index in skeleton
+            bone = skeleton.Body(n) # Get the bone's information
+            # Set bone info
             pos = (bone.Position().X(), bone.Position().Y(), bone.Position().Z())
             quat = (bone.Quat().W(), bone.Quat().X(), bone.Quat().Y(), bone.Quat().Z())
             parent_index = bone.ParentId()
-            
+            # Append position and rotation dictionary to SkelTable list
             SkelTable.append({"Pos":pos,"Rot":quat})
             
-            name = bone.Name().decode('ascii')
+            name = bone.Name().decode('ascii') # Decode the bone's name
             
-            edit_bone = armature_obj.data.edit_bones.new(name)
-            edit_bone.use_connect = False
+            # Set up blender bone
+            edit_bone = armature_obj.data.edit_bones.new(name) # Add bone to armature
+            edit_bone.use_connect = False # Don't connect to parent
             edit_bone.use_inherit_rotation = True
             edit_bone.inherit_scale = 'FULL'
             edit_bone.use_local_location = True
             edit_bone.head = (0,0,0)
             edit_bone.tail = (0,0.05,0)
             
-            if parent_index != 65535:
+            if parent_index != 65535: # Parent the bone to its parent if it has a parent
                 edit_bone.parent = armature_obj.data.edit_bones[parent_index]
 
+        # Pose bones based on the position and rotation stored in .skeleton
         utils_set_mode('POSE')
         for x in range(skeleton.BodyLength()):
             pbone = armature_obj.pose.bones[x]
@@ -54,45 +54,50 @@ def parse_skeleton(filepath, CurCollection):
             pbone.location = SkelTable[x]["Pos"]
         bpy.ops.pose.armature_apply()
         utils_set_mode('OBJECT')
-
-        bpy.ops.object.mode_set(mode='OBJECT')
         
-        return armature_obj
+        return armature_obj # Return the armature
+    # else: raise FileNotFoundError("ERROR: Make sure you've extracted the model's .skeleton file too.")
 
 
    
 def parse_mesh_info(filepath):
+    # Read .minfo file in as byte array
     buf = open(filepath, 'rb').read()
     buf = bytearray(buf)    
-    model_info = ModelInfo.GetRootAs(buf, 0)
+    model_info = ModelInfo.GetRootAs(buf, 0) # Get model info root in byte array
     
     return model_info   
 
     
 def read_some_data(context, filepath, import_scale):    
-    CurCollection = bpy.data.collections.new("Mesh Collection")
+    model_name = os.path.splitext(os.path.basename(filepath))[0] # Get model name from filename
+
+    CurCollection = bpy.data.collections.new(f"{model_name} Collection") # Create new collection
     bpy.context.scene.collection.children.link(CurCollection)
 
-    model_name = os.path.splitext(os.path.basename(filepath))[0] # Get model name from filename
+    utils_set_mode('OBJECT')
+    for obj in bpy.context.selected_objects:
+        obj.select_set(False) #Deselect everything
     
-    mesh_info = parse_mesh_info(filepath)
-    armature = parse_skeleton(filepath, CurCollection)
-    armature.name = f"{model_name}" # Set armature name
+    mesh_info = parse_mesh_info(filepath) # Parse the mesh info
+    armature = parse_skeleton(filepath, CurCollection) # Parse the skeleton
     
     DeformJointsTable = []
+    # Get bone weights indices (which bones have weight)
     for n in range(mesh_info.BonesToWeightIndicesLength()):
         DeformJointsTable.append(mesh_info.BonesToWeightIndices(n))
     
-    LOD = mesh_info.Lodinfos(0)
+    LOD = mesh_info.Lodinfos(0) # Get mesh LOD info of LOD0
     
     try: 
         f = open(os.path.splitext(filepath)[0] + ".mmesh", 'rb')
     except Exception as err: 
-        raise_noob_readable_exception("ERROR: Put the model's .mmesh file in the same folder as the .minfo.\n" 
+        raise FileNotFoundError("ERROR: Put the model's .mmesh file in the same folder as the .minfo.\n" 
             + "The model's original .mmesh can be found under: data/model_streaming/lod0/<modelID>.mmesh")
     
     vert_count = LOD.VertCount()
     face_count = LOD.PolyCountX3() // 3
+    print(f"vert_count = {vert_count} \n face_count = {face_count} \n LOD.PolyCountX3() = {LOD.PolyCountX3()}")
     
     VertTable = []
     NormalTable = []
@@ -111,8 +116,11 @@ def read_some_data(context, filepath, import_scale):
         TangentTable.append(struct.unpack('<eee', f.read(2*3)))
         f.seek(2,1)
         UVTable.append(struct.unpack('<ee', f.read(2*2)))
+    print(f"len(VertTable) = {len(VertTable)}")
     
     if armature is not None:
+        armature.name = f"{model_name}" # Set armature name
+        print(f"LOD.BufferTypes() {LOD.BufferTypes()}")
         if LOD.BufferTypes() & 2:
             f.seek(LOD.MeshBuffers(1).Offset())
             for n in range(vert_count):
@@ -124,6 +132,10 @@ def read_some_data(context, filepath, import_scale):
                 weight_indices = [DeformJointsTable[i0],DeformJointsTable[i1],DeformJointsTable[i2],DeformJointsTable[i3]]
                 WeightIndicesTable.append(weight_indices)
 
+        print(f"LOD.BufferTypes() {LOD.BufferTypes()}")
+        print(f"LOD.BufferTypes() & 2 = {LOD.BufferTypes() & 2}")
+        print(f"LOD.BufferTypes() & 8 = {LOD.BufferTypes() & 8}")
+        print(f"LOD.BufferTypes() & 4 = {LOD.BufferTypes() & 4}")
         if LOD.BufferTypes() & 8:
             if LOD.BufferTypes() & 4:
                 f.seek(LOD.MeshBuffers(3).Offset())
@@ -135,27 +147,40 @@ def read_some_data(context, filepath, import_scale):
     f.seek(LOD.MeshBuffers(LOD.MeshBuffersLength() - 1).Offset())
     for n in range(face_count):
         FaceTable.append(struct.unpack('<III', f.read(4*3)))
+    print(f"len(FaceTable) = {len(FaceTable)}")
         
     f.close()
     del f
     
-    mesh1 = bpy.data.meshes.new("Mesh")
+    mesh1 = bpy.data.meshes.new("Mesh") # Create mesh data
     mesh1.use_auto_smooth = True
     obj = bpy.data.objects.new(f"{model_name}_Mesh",mesh1) # Create mesh object with model name
     CurCollection.objects.link(obj)
-    bpy.context.view_layer.objects.active = obj
+    utils_select_active(obj)
     obj.select_set(True)
     mesh = bpy.context.object.data
     bm = bmesh.new()
     for v in VertTable:
         bm.verts.new((v[0],v[1],v[2]))
     list = [v for v in bm.verts]
-    for f in FaceTable:
+    print(f"len(list) = {len(list)}")
+    duplicate_face_indices = [] # Models can have duplicate faces
+    for idx, f in enumerate(FaceTable): # Convert verts to faces
         try:
+            # if idx < 35000: print(f"{idx}: {(f[0],f[1],f[2])}")
             bm.faces.new((list[f[0]],list[f[1]],list[f[2]]))
-        except:
+        except Exception as err:
+            print(f"{idx}: {err}")
+            duplicate_face_indices.append(idx)
             pass
     bm.to_mesh(mesh)
+
+    dupe_face_start = -1
+    dupe_face_count = -1
+    if len(duplicate_face_indices) > 0:
+        dupe_face_start = duplicate_face_indices[0]
+        dupe_face_count = len(duplicate_face_indices)
+    print(f"len(bm.faces) = {len(bm.faces)}")
 
     uv_layer = bm.loops.layers.uv.verify()
     Normals = []
@@ -173,7 +198,7 @@ def read_some_data(context, filepath, import_scale):
         
     if NormalTable != []:
         mesh1.normals_split_custom_set(Normals)
-        
+
     if armature is not None:
         for v in range(vert_count):
             for n in range(4):
@@ -196,8 +221,23 @@ def read_some_data(context, filepath, import_scale):
             mat = bpy.data.materials.new(name=sub_mesh.Name().decode() + "." + str(chunk.Material()))
             obj.data.materials.append(mat)
 
-            for p in range(chunk.Offset() // 3, chunk.Offset() // 3 + chunk.Count() // 3):
-                obj.data.polygons[p].material_index = mat_counter
+            chunk_offset = chunk.Offset() // 3
+            chunk_count = chunk.Count() // 3
+            chunk_end = chunk_offset + chunk_count
+            if dupe_face_start != -1:
+                if chunk_offset > dupe_face_start:
+                    chunk_offset = chunk_offset - dupe_face_count
+                if chunk_end > dupe_face_start:
+                    chunk_end = chunk_end - dupe_face_count
+
+            print(f"chunk.Offset() // 3: {chunk.Offset() // 3}\t chunk.Count() // 3: {chunk.Count() // 3}\t sum: {chunk.Offset() // 3 + chunk.Count() // 3}")
+            # print(f"chunk.Offset() // 3 + chunk.Count() // 3: {chunk.Offset() // 3 + chunk.Count() // 3}")
+            for p in range(chunk_offset, chunk_end):
+                try:
+                    obj.data.polygons[p].material_index = mat_counter
+                except Exception as err:
+                    raise Exception(format_exception("ERROR: This model's mesh probably has duplicate faces. The model's materials will not be assigned correctly."))
+                    pass
             
             mat_counter += 1
         
@@ -208,15 +248,18 @@ def read_some_data(context, filepath, import_scale):
         armature.rotation_euler = (1.5707963705062866,0,0) # Rotate 90 degrees from Y up to Z up
     
     obj.select_set(True)
-    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    utils_set_mode('EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.flip_normals()
-    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+    utils_set_mode('OBJECT')
 
-    armature.select_set(True) # Select the armature
-    bpy.context.view_layer.objects.active = armature
-    bpy.context.object.scale = (import_scale, import_scale, import_scale) # Scale the armature
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) # Apply Transforms to armature
+    if armature is not None:
+        armature.select_set(True) # Select the armature
+        armature.display_type = 'WIRE'
+        armature.show_in_front = True # X-Ray view for armature
+        utils_select_active(armature)
+        bpy.context.object.scale = (import_scale, import_scale, import_scale) # Scale the armature
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) # Apply Transforms to armature
 
     return {'FINISHED'}
 

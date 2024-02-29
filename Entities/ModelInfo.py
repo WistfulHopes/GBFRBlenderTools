@@ -11,9 +11,10 @@ class ModelInfo(object):
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
-        n = encode.Get(packer.uoffset, buf, offset)
-        x = ModelInfo()
-        x.Init(buf, n + offset)
+        n = encode.Get(packer.uoffset, buf, offset) # Decodes a value at buf[offset] using packer type of uoffset.
+        x = ModelInfo() # Create instance of ModelInfo
+        x.Init(buf, n + offset) # initialize with bytes in buffer and the decoded n value + offset
+        print(f"n = {n}, offset = {offset}")
         return x
 
     @classmethod
@@ -32,12 +33,14 @@ class ModelInfo(object):
         return 0
 
     # ModelInfo
+    # Get mesh LOD info for LODj
     def Lodinfos(self, j):
-        o = number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = number_types.UOffsetTFlags.py_type(self._tab.Offset(6)) # offset
         if o != 0:
-            x = self._tab.Vector(o)
-            x += number_types.UOffsetTFlags.py_type(j) * 4
-            x = self._tab.Indirect(x)
+            x = self._tab.Vector(o) #Get vector at offset
+            x += number_types.UOffsetTFlags.py_type(j) * 4 #Add j * 4 to vector
+            x = self._tab.Indirect(x) #retrieves the relative offset stored at x
+            # Create LOD info object
             from .LODInfo import LODInfo
             obj = LODInfo()
             obj.Init(self._tab.Bytes, x)
@@ -159,10 +162,12 @@ class ModelInfo(object):
         return o == 0
 
     # ModelInfo
+    # Get bone weight indices
     def BonesToWeightIndices(self, j):
-        o = number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
+        o = number_types.UOffsetTFlags.py_type(self._tab.Offset(16)) # offset
         if o != 0:
             a = self._tab.Vector(o)
+            # print(f"a: {a}\t number_types.UOffsetTFlags.py_type(j * 2) {number_types.UOffsetTFlags.py_type(j * 2)}")
             return self._tab.Get(number_types.Uint16Flags, a + number_types.UOffsetTFlags.py_type(j * 2))
         return 0
 
@@ -174,6 +179,7 @@ class ModelInfo(object):
         return 0
 
     # ModelInfo
+    # Get length of bone weights indices
     def BonesToWeightIndicesLength(self):
         o = number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         if o != 0:

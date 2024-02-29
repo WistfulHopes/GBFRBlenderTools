@@ -14,6 +14,7 @@ class ModelSkeleton(object):
         n = encode.Get(packer.uoffset, buf, offset)
         x = ModelSkeleton()
         x.Init(buf, n + offset)
+        # print(f"n = {n}, offset = {offset}")
         return x
 
     @classmethod
@@ -45,10 +46,13 @@ class ModelSkeleton(object):
         return None
 
     # ModelSkeleton
+    # Returns the number of bones in the skeleton
     def BodyLength(self):
-        o = number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
+        o = number_types.UOffsetTFlags.py_type(self._tab.Offset(6)) #Get body length offset 6 from self._tab
+        # print(f"BodyLength offset = {o}")
         if o != 0:
-            return self._tab.VectorLen(o)
+            # print(f"BodyLength = {self._tab.VectorLen(o)}")
+            return self._tab.VectorLen(o) # Return vector length retrieved from offset
         return 0
 
     # ModelSkeleton
