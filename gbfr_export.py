@@ -21,13 +21,6 @@ from .Entities.Quaternion import Quaternion, CreateQuaternion
 from .Entities import MInfo_Converter
 from .utils import *
 
-def fix_normals(obj):
-    obj.select_set(True)
-    utils_set_mode('EDIT')
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.flip_normals()
-    utils_set_mode('OBJECT')
-
 def write_some_data(context, filepath, export_scale):
     #Init mmesh and json file variables
     f = None ; j = None
