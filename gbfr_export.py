@@ -19,32 +19,7 @@ from .Entities.BoneInfo import BoneInfo, CreateBoneInfo
 from .Entities.Vec3 import Vec3, CreateVec3
 from .Entities.Quaternion import Quaternion, CreateQuaternion
 from .Entities import MInfo_Converter
-from .utils import format_exception, utils_set_mode, utils_select_active
-
-
-def split_faces_by_edge_seams(obj): # Split mesh faces by seams
-    utils_set_mode('EDIT')
-    bpy.ops.mesh.select_all(action='SELECT')
-
-    bpy.ops.uv.select_all(action='SELECT') # Select all UVs
-    bpy.ops.uv.seams_from_islands(mark_seams=True) # Mark boundary edges of UV islands as seams
-
-    bpy.context.tool_settings.mesh_select_mode = (False, True, False) # Set Edge Select
-    bpy.ops.mesh.select_all(action = 'DESELECT')
-    
-    utils_set_mode('OBJECT') # For some reason we can only select edges in object mode ???????? :) Funny Blender
-    for edge in obj.data.edges: # Select all edge seams
-        if edge.use_seam:
-            edge.select = True
-
-    utils_set_mode('EDIT')
-    
-    bpy.ops.mesh.edge_split(type='EDGE') # Split faces by selected edge seams
-    # utils_set_mode('OBJECT')
-
-    # Just split all faces by all edges (like how imported, avoids UV stitching and Normals issues)
-    # bpy.ops.mesh.select_all(action = 'SELECT')
-    # bpy.ops.mesh.edge_split(type='EDGE')
+from .utils import *
 
 def fix_normals(obj):
     obj.select_set(True)
