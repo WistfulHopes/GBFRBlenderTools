@@ -1,9 +1,9 @@
 bl_info = {
     "name": "Granblue Fantasy Relink Blender Tools",
     "author": "WistfulHopes & AlphaSatanOmega",
-    "version": (0, 3, 0),
+    "version": (0, 5, 0),
     "blender": (3, 5, 0),
-    "location": "File > Import/Export",
+    "location": "File > Import/Export | View 3D > Tool Shelf > GBFR",
     "description": "Tool to import & export models from Granblue Fantasy Relink",
     "warning": "",
     "category": "Import-Export",
@@ -17,6 +17,8 @@ if "bpy" in locals():
         importlib.reload(gbfr_import)
     if "gbfr_export" in locals():
         importlib.reload(gbfr_export)
+    if "gbfr_panel" in locals():
+        importlib.reload(gbfr_panel)
     if "utils" in locals():
         importlib.reload(utils)
 
@@ -25,7 +27,7 @@ import bmesh
 import mathutils
 import struct
 import os
-from . import gbfr_import, gbfr_export, utils
+from . import gbfr_import, gbfr_export, gbfr_panel, utils
 from .Entities.ModelInfo import ModelInfo
 # from .Entities.ModelSkeleton import ModelSkeleton
 
@@ -55,11 +57,13 @@ class AddonPreferences(bpy.types.AddonPreferences):
 def register():
     gbfr_import.register()
     gbfr_export.register()
+    gbfr_panel.register()
     bpy.utils.register_class(AddonPreferences)
 
 def unregister():
     gbfr_import.unregister()
     gbfr_export.unregister()
+    gbfr_panel.unregister()
     bpy.utils.unregister_class(AddonPreferences)
 
 #Run the addon

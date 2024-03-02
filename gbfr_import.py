@@ -3,10 +3,10 @@ import bmesh
 import mathutils
 import struct
 import os
+import importlib
 from .Entities.ModelInfo import ModelInfo
 from .Entities.ModelSkeleton import ModelSkeleton
-from .utils import format_exception, utils_set_mode, utils_select_active
-
+from .utils import *
         
 def parse_skeleton(filepath, CurCollection):
     if os.path.isfile(os.path.splitext(filepath)[0] + ".skeleton"):
@@ -69,7 +69,7 @@ def parse_mesh_info(filepath):
     return model_info   
 
     
-def read_some_data(context, filepath, import_scale):    
+def read_some_data(context, filepath, import_scale): 
     model_name = os.path.splitext(os.path.basename(filepath))[0] # Get model name from filename
 
     CurCollection = bpy.data.collections.new(f"{model_name} Collection") # Create new collection
