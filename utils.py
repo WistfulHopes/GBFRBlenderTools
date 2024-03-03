@@ -139,7 +139,7 @@ def utils_rename_bones(armature, name_to_index = False):
 		if name_to_index: # Bone Name to Index
 			try: #Rename the bone
 				for index, name in bone_names_mapping.items():
-					if bone.name in name:
+					if name in bone.name:
 						bone.name = index
 						break
 			except:
@@ -192,6 +192,7 @@ def utils_reorder_materials(context):
 
 
 def utils_join_meshes(context, selected_only = False):
+	utils_set_mode('OBJECT')
 	active_object = context.active_object
 	if active_object.type == "MESH":
 		utils_select_active(active_object.parent)
@@ -210,8 +211,30 @@ def utils_join_meshes(context, selected_only = False):
 	pass
 
 # Select all 0 weight vertices on mesh
+# Credit to WolfieBeat
 def utils_select_0_weight_vertices(mesh):
+	zero_weight_vert_count = 0
 	utils_set_mode('EDIT')
 	bpy.ops.mesh.select_mode(type="VERT")
 	bpy.ops.mesh.select_all(action='DESELECT')
-	bpy.ops.mesh.select_ungrouped()
+	mesh_data = mesh.data
+	utils_set_mode('OBJECT') # Funny blender only allows object mode selection :)
+	for vertex in mesh_data.vertices:
+	    total_vert_weight = 0.0 # keep track of vertex's total weight
+	    for vertex_group in vertex.groups: # add up total weightr for each vertex group vert belongs to
+	        total_vert_weight += vertex_group.weight
+	    if total_vert_weight == 0.0: # if the vertex weights doesn't add up to roughly 1.0, select it
+	    	vertex.select = True
+	    	zero_weight_vert_count += 1
+	utils_set_mode('EDIT')
+	return zero_weight_vert_count
+
+
+
+# Limit and Normalize all vertex weights
+def utils_limit_and_normalize_weights(mesh):
+	for vg in mesh.vertex_groups:
+		# limit total weights to 4
+		bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
+		# normalize all weights
+		bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL')
