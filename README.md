@@ -65,4 +65,4 @@ Join the Relink Modding Discord For help, guidance & more!
 * [@AlphaSatanOmega](https://github.com/AlphaSatanOmega)
 
 ## Additional Credits: 
-* [@WolfieBeat](https://github.com/WolfieBeat) - Select Zero Vertices script
+* [@WolfieBeat](https://github.com/WolfieBeat) - Select Zero Weight Vertices script
