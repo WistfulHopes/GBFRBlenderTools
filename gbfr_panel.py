@@ -189,8 +189,7 @@ class ButtonJoinAllMeshes(bpy.types.Operator):
 	@classmethod
 	def poll(cls, context):
 		return (context.active_object is not None and
-				(context.active_object.type == 'MESH' or context.active_object.type == 'ARMATURE')
-				and context.)
+				(context.active_object.type == 'MESH' or context.active_object.type == 'ARMATURE'))
 
 	def execute(self, context):
 		try:
