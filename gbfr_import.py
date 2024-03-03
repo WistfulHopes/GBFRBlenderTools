@@ -45,6 +45,18 @@ def parse_skeleton(filepath, CurCollection):
             if parent_index != 65535: # Parent the bone to its parent if it has a parent
                 edit_bone.parent = armature_obj.data.edit_bones[parent_index]
 
+            # Set up blender bone collection (Import Only)
+            Unk = None
+            if bone.A1() is not None:
+                Unk = bone.A1().Unk()
+            if Unk is not None:
+                bone_coll_name = Unk.to_bytes(4, "big").decode("ASCII").rstrip('\x00')
+                if bone_coll_name not in armature_obj.data.collections:
+                    bone_coll = armature_obj.data.collections.new(bone_coll_name)
+                else:
+                    bone_coll = armature_obj.data.collections[bone_coll_name]
+                bone_coll.assign(edit_bone)
+
         # Pose bones based on the position and rotation stored in .skeleton
         utils_set_mode('POSE')
         for x in range(skeleton.BodyLength()):
