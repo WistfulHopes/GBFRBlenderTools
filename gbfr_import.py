@@ -73,6 +73,7 @@ def parse_skeleton(filepath, CurCollection):
 						pass
 					if layer_idx == None or layer_idx > 31:
 						layer_idx = 31
+					SkelTable[-1]["Coll_name"] = bone_coll_name
 
 					edit_bone.layers[layer_idx] = True
 
@@ -84,6 +85,14 @@ def parse_skeleton(filepath, CurCollection):
 			pbone.rotation_quaternion = SkelTable[x]["Rot"]
 			pbone.location = SkelTable[x]["Pos"]
 			pbone.scale = SkelTable[x]["Scale"]
+
+			if bpy.app.version >= (3, 5, 0):
+				if SkelTable[x]["Coll_name"] not in armature_obj.pose.bone_groups:
+					bgroup = armature_obj.pose.bone_groups.new(SkelTable[x]["Coll_name"])
+				else:
+					bgroup = armature_obj.pose.bone_groups[SkelTable[x]["Coll_name"]]
+
+				pbone.bone_group = bgroup
 		bpy.ops.pose.armature_apply()
 		utils_set_mode('OBJECT')
 		
