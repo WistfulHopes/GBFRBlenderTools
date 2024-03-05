@@ -57,12 +57,24 @@ def parse_skeleton(filepath, CurCollection):
 					bone_coll_name = Unk.to_bytes(4, "big").decode("ASCII").rstrip('\x00')
 				except:
 					bone_coll_name = "_z"
-				if bone_coll_name not in armature_obj.data.collections:
-					bone_coll = armature_obj.data.collections.new(bone_coll_name)
-				else:
-					bone_coll = armature_obj.data.collections[bone_coll_name]
-				bone_coll.assign(edit_bone)
 
+				if bpy.app.version >= (4, 0, 0):
+					if bone_coll_name not in armature_obj.data.collections:
+						bone_coll = armature_obj.data.collections.new(bone_coll_name)
+					else:
+						bone_coll = armature_obj.data.collections[bone_coll_name]
+
+					bone_coll.assign(edit_bone)
+				elif bpy.app.version >= (3, 6, 0):
+					layer_idx = None
+					try:
+						layer_idx = int(bone_coll_name[1:], 16)
+					except:
+						pass
+					if layer_idx == None or layer_idx > 31:
+						layer_idx = 31
+
+					edit_bone.layers[layer_idx] = True
 
 		# Pose bones based on the position and rotation stored in .skeleton
 		utils_set_mode('POSE')
