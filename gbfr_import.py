@@ -29,6 +29,7 @@ def parse_skeleton(filepath, CurCollection):
 			quat = (bone.Quat().W(), bone.Quat().X(), bone.Quat().Y(), bone.Quat().Z())
 			scale = (bone.Scale().X(), bone.Scale().Y(), bone.Scale().Z())
 
+
 			parent_index = bone.ParentId()
 			# Append position and rotation dictionary to SkelTable list
 			SkelTable.append({"Pos":pos,"Rot":quat, "Scale":scale})
