@@ -139,7 +139,7 @@ def utils_rename_bones(armature, name_to_index = False):
 		if name_to_index: # Bone Name to Index
 			try: #Rename the bone
 				for index, name in bone_names_mapping.items():
-					if name in bone.name:
+					if name == bone.name:
 						bone.name = index
 						break
 			except:
