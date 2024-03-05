@@ -66,3 +66,4 @@ Join the Relink Modding Discord For help, guidance & more!
 
 ## Additional Credits: 
 * [@WolfieBeat](https://github.com/WolfieBeat) - Select Zero Weight Vertices script
+* [@bujyu-uo](https://github.com/bujyu-uo) - Bone Collection importing
