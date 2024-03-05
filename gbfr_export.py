@@ -61,12 +61,7 @@ def write_some_data(context, filepath, export_scale):
 		mesh = obj.data
 
 		utils_set_mode('EDIT')
-		#for vert in obj.data.vertices: # Unhide all vertices
-		#	vert.hide = False
-		#"bpy.data" can not effect bmesh in edit mode
-		
 		bpy.ops.mesh.reveal() # Unhide all vertices
-		
 		split_faces_by_edge_seams(obj) # Do this before anything else or BLENDER FUCKS UP THE NORMALS :)))))))))))
 		utils_set_mode('OBJECT')
 
@@ -101,35 +96,33 @@ def write_some_data(context, filepath, export_scale):
 		bpy.ops.mesh.select_all(action='SELECT')
 		bpy.ops.mesh.quads_convert_to_tris(quad_method='FIXED') # Triangulate the mesh
 		bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False) # DELETE LOOSE EDGES SO MESH DOESNT EXPLODE
-		
-		# After delete_loose, all vertices will be diselectd, so it need to reselect them
-		bpy.ops.mesh.select_all(action='SELECT')
-		
+		bpy.ops.mesh.select_all(action='SELECT') # After delete_loose, all vertices will be deselected, so reselect them
 		bpy.ops.mesh.flip_normals()
 		
-		# Before sort by material, it needed to switch to "face select mode"
+		# Before sorting by materials, we need to switch to face select mode
 		mesh_select_mode_backup=tuple(bpy.context.scene.tool_settings.mesh_select_mode)
 		bpy.ops.mesh.select_mode(type='FACE')
-		
 		bpy.ops.mesh.sort_elements(type='MATERIAL') # Sort faces by material
-		
-		# Restore the mesh select mode
-		bpy.context.scene.tool_settings.mesh_select_mode=mesh_select_mode_backup
+		bpy.context.scene.tool_settings.mesh_select_mode=mesh_select_mode_backup # Restore the mesh select mode
 		
 		utils_set_mode('OBJECT')
 		mesh.calc_tangents() # mesh.calc_tangents(uvmap='Float2')
 
 		for vg in obj.vertex_groups: # Limit and normalize weights
-			# limit total weights to 4
-			bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
-			# normalize all weights
-			bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL')
+			bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4) # limit total weights to 4
+			bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL') # normalize all weights
 
 		# Re-encode and rename all the bone groups back to ints
-		for bone_group in armature.data.collections:
-			encode_coll_name = bone_group.name + '\x00\x00'
-			bone_group.name = str(int.from_bytes(encode_coll_name.encode('ASCII'), 'big'))
-			print("Renamed bone group:", bone_group.name)
+		if bpy.app.version >= (4, 0, 0):
+			for bone_collection in armature.data.collections:
+				encode_coll_name = bone_collection.name + '\x00\x00'
+				bone_collection.name = str(int.from_bytes(encode_coll_name.encode('ASCII'), 'big'))
+				print("Renamed bone group:", bone_collection.name)
+		else: 
+			for bone_group in armature.pose.bone_groups:
+				encode_group_name = bone_group.name + '\x00\x00'
+				bone_group.name = str(int.from_bytes(encode_group_name.encode('ASCII'), 'big'))
+				print("Renamed bone group to:", bone_group.name)
 
 
 		#================================
@@ -232,8 +225,14 @@ def write_some_data(context, filepath, export_scale):
 				a1 = None
 				if n != 0:
 					try:
-						for bone_group in armature.data.collections:
-							if bone.name in bone_group.bones:
+						if bpy.app.version >= (4, 0, 0):
+							for bone_collection in armature.data.collections:
+								if bone.name in bone_collection.bones:
+									a1  = CreateBoneInfo(builder, n, int(bone_collection.name))
+						else:
+							pbone = armature.pose.bones[n]
+							if pbone.bone_group:
+								bone_group = pbone.bone_group
 								a1  = CreateBoneInfo(builder, n, int(bone_group.name))
 					except:
 						a1 = CreateBoneInfo(builder, n, random.randint(0, 4294967294))
@@ -276,6 +275,8 @@ def write_some_data(context, filepath, export_scale):
 			# ================================================
 			  
 			for v in mesh.vertices:
+				if v.index not in vert_table:
+					continue # Make sure we're only processing verts we're exporting
 				if len(v.groups) > 4:
 					fix_normals(obj)
 					raise UserWarning("Your model has one or more vertices with more than 4 vertex weights.\nTo export successfully, make sure to use Limit Total on your model.")
@@ -343,9 +344,13 @@ def write_some_data(context, filepath, export_scale):
 		face_start = f.tell()
 
 		for face in mesh.polygons:
-			if len(face.vertices) != 3:
-				print(f"len(face.vertices): {len(face.vertices)}")
-				continue
+			skip_face = False
+			for vert in face.vertices:
+				if vert not in vert_table:
+					skip_face = True
+					break
+			if skip_face: continue
+
 			f.write(struct.pack('<I', face.vertices[0]))
 			f.write(struct.pack('<I', face.vertices[1]))
 			f.write(struct.pack('<I', face.vertices[2]))       
