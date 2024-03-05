@@ -4,7 +4,7 @@ Granblue Fantasy Relink model Importer/Exporter for Blender
 # [Download](https://github.com/WistfulHopes/GBFRBlenderTools/releases)
 
 # Requirements
-* [Blender](https://www.blender.org/download/)
+* [Blender (3.5 or Higher)](https://www.blender.org/download/)
 * [FlatBuffers - Windows.flatc.binary.zip](https://github.com/google/flatbuffers/releases)
 
 # Installation
