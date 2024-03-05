@@ -57,21 +57,41 @@ def parse_skeleton(filepath, CurCollection):
 					bone_coll_name = Unk.to_bytes(4, "big").decode("ASCII").rstrip('\x00')
 				except:
 					bone_coll_name = "_z"
-				if bone_coll_name not in armature_obj.data.collections:
-					bone_coll = armature_obj.data.collections.new(bone_coll_name)
-				else:
-					bone_coll = armature_obj.data.collections[bone_coll_name]
-				bone_coll.assign(edit_bone)
 
+				if bpy.app.version >= (4, 0, 0):
+					if bone_coll_name not in armature_obj.data.collections:
+						bone_coll = armature_obj.data.collections.new(bone_coll_name)
+					else:
+						bone_coll = armature_obj.data.collections[bone_coll_name]
+
+					bone_coll.assign(edit_bone)
+				else: # Blender 3 uses bone groups
+					SkelTable[n]["BoneGroup"] = bone_coll_name
+					print(f"SkelTable[n]['BoneGroup']: {SkelTable[n]['BoneGroup']}")
 
 		# Pose bones based on the position and rotation stored in .skeleton
 		utils_set_mode('POSE')
 		for x in range(skeleton.BodyLength()):
 			pbone = armature_obj.pose.bones[x]
+			ebone = armature_obj.data.bones[x]
 			pbone.rotation_mode = 'QUATERNION'
 			pbone.rotation_quaternion = SkelTable[x]["Rot"]
 			pbone.location = SkelTable[x]["Pos"]
 			pbone.scale = SkelTable[x]["Scale"]
+
+			if bpy.app.version < (4, 0, 0): # Blender 3 assign bones to bone groups instead
+				if "BoneGroup" not in SkelTable[x]: continue
+				bone_group_name = SkelTable[x]["BoneGroup"]
+				if bone_group_name not in armature_obj.pose.bone_groups:
+					bone_group = armature_obj.pose.bone_groups.new(name=bone_group_name)
+					armature_obj.data.layers[-1] = True
+				else:
+					bone_group = armature_obj.pose.bone_groups[bone_group_name]
+				pbone.bone_group = bone_group
+				bone_in_layers = [False]*32
+				bone_in_layers[pbone.bone_group_index] = True
+				ebone.layers = bone_in_layers
+
 		bpy.ops.pose.armature_apply()
 		utils_set_mode('OBJECT')
 		
