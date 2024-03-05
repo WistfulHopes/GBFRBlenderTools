@@ -61,8 +61,12 @@ def write_some_data(context, filepath, export_scale):
 		mesh = obj.data
 
 		utils_set_mode('EDIT')
-		for vert in obj.data.vertices: # Unhide all vertices
-			vert.hide = False
+		#for vert in obj.data.vertices: # Unhide all vertices
+		#	vert.hide = False
+		#"bpy.data" can not effect bmesh in edit mode
+		
+		bpy.ops.mesh.reveal() # Unhide all vertices
+		
 		split_faces_by_edge_seams(obj) # Do this before anything else or BLENDER FUCKS UP THE NORMALS :)))))))))))
 		utils_set_mode('OBJECT')
 
@@ -97,8 +101,21 @@ def write_some_data(context, filepath, export_scale):
 		bpy.ops.mesh.select_all(action='SELECT')
 		bpy.ops.mesh.quads_convert_to_tris(quad_method='FIXED') # Triangulate the mesh
 		bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False) # DELETE LOOSE EDGES SO MESH DOESNT EXPLODE
+		
+		# After delete_loose, all vertices will be diselectd, so it need to reselect them
+		bpy.ops.mesh.select_all(action='SELECT')
+		
 		bpy.ops.mesh.flip_normals()
+		
+		# Before sort by material, it needed to switch to "face select mode"
+		mesh_select_mode_backup=tuple(bpy.context.scene.tool_settings.mesh_select_mode)
+		bpy.ops.mesh.select_mode(type='FACE')
+		
 		bpy.ops.mesh.sort_elements(type='MATERIAL') # Sort faces by material
+		
+		# Restore the mesh select mode
+		bpy.context.scene.tool_settings.mesh_select_mode=mesh_select_mode_backup
+		
 		utils_set_mode('OBJECT')
 		mesh.calc_tangents() # mesh.calc_tangents(uvmap='Float2')
 
