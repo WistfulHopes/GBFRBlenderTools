@@ -64,7 +64,7 @@ def convert_minfo(flatc_path, minfo_path, blender_json_path):
 
     print(flatc_path, "-o", f"{flatc_temp_dir}", "--json", f"{minfo_fbs_path}", "--", f"{minfo_path}", "--raw-binary")
     
-    command = [flatc_path, "-o", f"{flatc_temp_dir}", "--json", f"{minfo_fbs_path}", "--", f"{minfo_path}", "--raw-binary"]
+    command = [flatc_path, "-o", f"{flatc_temp_dir}", "--json", f"{minfo_fbs_path}", "--", f"{minfo_path}", "--raw-binary", "--no-warnings"]
     subprocess.run(command, check=True)
     # flatc json gets stored to a temp folder
     flatc_json_path = os.path.join(flatc_temp_dir, f"{model_name}.json") 
@@ -91,7 +91,7 @@ def convert_minfo(flatc_path, minfo_path, blender_json_path):
     os.makedirs(output_dir, exist_ok=True)
 
     # Run flatc.exe to generate binary minfo from the modified json
-    command = [flatc_path, "-o", f"{flatc_temp_dir}", "--binary", f"{minfo_fbs_path}", modified_flatc_json_file]
+    command = [flatc_path, "-o", f"{flatc_temp_dir}", "--binary", f"{minfo_fbs_path}", modified_flatc_json_file, "--no-warnings"]
     subprocess.run(command, check=True)
     # Rename the .bin otuput to .minfo
     binary_output_file = os.path.join(flatc_temp_dir, f"{model_name}.bin")
