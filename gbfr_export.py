@@ -68,7 +68,7 @@ def write_some_data(context, filepath, export_scale):
 
 		# Get the model's armature
 		armature = obj.find_armature()
-		if armature == None: # No armature attached to mesh, abort
+		if armature == None or obj.parent.type != 'ARMATURE': # No armature attached to mesh, abort
 			raise TypeError("ERROR: The selected mesh has no armature.\n" + 
 			"Your model needs to have an armature.\nMake sure:" +
 			"1. You have the correct model selected.\n" +
@@ -84,10 +84,11 @@ def write_some_data(context, filepath, export_scale):
 
 		obj.select_set(True) # Select mesh object
 		armature.select_set(True) # Select armature
+		bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) #Apply all transforms
 		armature.rotation_euler = (-1.5707963705062866,0,0) #Rotate back 90 to Y up
 		bpy.context.view_layer.objects.active = armature # Set armature as active object
 		bpy.context.object.scale = (export_scale, export_scale, export_scale) # Scale the armature
-		bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) #Apply all transforms to mesh
+		bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) #Apply all transforms again
 		armature.select_set(False) # Deselect Armature
 
 		bpy.context.view_layer.objects.active = obj # Set mesh as active object
@@ -95,14 +96,35 @@ def write_some_data(context, filepath, export_scale):
 		utils_set_mode('EDIT')
 		bpy.ops.mesh.select_all(action='SELECT')
 		bpy.ops.mesh.quads_convert_to_tris(quad_method='FIXED') # Triangulate the mesh
+		bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False) # DELETE LOOSE EDGES SO MESH DOESNT EXPLODE
 		bpy.ops.mesh.flip_normals()
-		bpy.ops.mesh.sort_elements(type='MATERIAL')
+		bpy.ops.mesh.sort_elements(type='MATERIAL') # Sort faces by material
 		utils_set_mode('OBJECT')
 		mesh.calc_tangents() # mesh.calc_tangents(uvmap='Float2')
+
+		for vg in obj.vertex_groups: # Limit and normalize weights
+			# limit total weights to 4
+			bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
+			# normalize all weights
+			bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL')
+
+		# Re-encode and rename all the bone groups back to ints
+		for bone_group in armature.data.collections:
+			encode_coll_name = bone_group.name + '\x00\x00'
+			bone_group.name = str(int.from_bytes(encode_coll_name.encode('ASCII'), 'big'))
+			print("Renamed bone group:", bone_group.name)
+
 
 		#================================
 		# Build file
 		#================================
+
+		#Get BMesh from mesh
+		bm = bmesh.new()
+		bm.from_mesh(mesh)
+		bm.verts.ensure_lookup_table() # Ensure that the lookup tables are initialized
+		bm.edges.ensure_lookup_table()
+		bm.faces.ensure_lookup_table()
 
 		vert_table = {}
 		section_length_table = []
@@ -128,6 +150,31 @@ def write_some_data(context, filepath, export_scale):
 				vert_count += 1
 				
 				vert_table[vert_id] = vert_buffer
+
+		# for face in bm.faces:
+		# 	for vert, loop in zip(face.verts, face.loops):
+		# 		vert_id = vert.index				
+		# 		if vert_id in vert_table:
+		# 			continue
+		# 		# v = mesh.vertices[vert_id]
+		# 		# loop = mesh.loops[loop_id]
+		# 		normal = -loop.calc_normal() # Get Normal
+		# 		tangent = loop.calc_tangent() # Get Tangent
+		# 		bitangent_sign = -1.0 #-loop.calc_tangent_edge_sign() # Get bitangent sign
+
+		# 		vert_buffer = []
+		# 		vert_buffer.append(struct.pack('<fff', vert.co[0], vert.co[1], vert.co[2]))
+		# 		vert_buffer.append(struct.pack('<eee', normal[0], normal[1], normal[2]))
+		# 		vert_buffer.append(b'\x00')
+		# 		vert_buffer.append(b'\x00')
+		# 		vert_buffer.append(struct.pack('<eee', tangent[0], tangent[1], tangent[2]))
+		# 		vert_buffer.append(struct.pack('<e', bitangent_sign))
+		# 		uv_layer = bm.loops.layers.uv.active
+		# 		uv = loop[uv_layer].uv
+		# 		vert_buffer.append(struct.pack('<ee', uv[0], uv[1]))
+		# 		vert_count += 1
+				
+		# 		vert_table[vert_id] = vert_buffer
 				
 		keys = list(vert_table.keys())
 		keys.sort()
@@ -149,6 +196,8 @@ def write_some_data(context, filepath, export_scale):
 		if armature is not None:
 			builder = Builder(0)
 
+			# Build Skeleton
+			# ================================================
 			for n, bone in enumerate(armature.data.bones):
 				DeformJointsTable.append(n)
 				
@@ -162,9 +211,15 @@ def write_some_data(context, filepath, export_scale):
 				if bone.parent:
 					mat = bone.parent.matrix_local.inverted() @ bone.matrix_local
 				
+				# Get bone's bonegroup
 				a1 = None
 				if n != 0:
-					a1 = CreateBoneInfo(builder, n, random.randint(0, 4294967294))
+					try:
+						for bone_group in armature.data.collections:
+							if bone.name in bone_group.bones:
+								a1  = CreateBoneInfo(builder, n, int(bone_group.name))
+					except:
+						a1 = CreateBoneInfo(builder, n, random.randint(0, 4294967294))
 					
 				BoneStart(builder)
 				if a1 is not None:
@@ -198,12 +253,10 @@ def write_some_data(context, filepath, export_scale):
 			skel.write(buf)
 			skel.close()
 			del skel
-			
-			for vg in obj.vertex_groups:
-			  # limit total weights to 4
-			  bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
-			  # normalize all weights
-			  bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL')
+
+
+			# Build mesh vertex groups
+			# ================================================
 			  
 			for v in mesh.vertices:
 				if len(v.groups) > 4:
@@ -252,7 +305,8 @@ def write_some_data(context, filepath, export_scale):
 						if total_weight != 65535:
 							index_max = max(range(4), key=weight_table[-4:].__getitem__)
 							weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
-					
+			
+			# Assign weights		
 			weight_id_start = f.tell()
 					
 			for id in weight_id_table:
@@ -267,18 +321,35 @@ def write_some_data(context, filepath, export_scale):
 			
 			section_length_table.append({'Offset': weight_start, 'Size': f.tell() - weight_start})        
 
+
+		# Build  faces
 		face_start = f.tell()
 
 		for face in mesh.polygons:
+			if len(face.vertices) != 3:
+				print(f"len(face.vertices): {len(face.vertices)}")
+				continue
 			f.write(struct.pack('<I', face.vertices[0]))
 			f.write(struct.pack('<I', face.vertices[1]))
 			f.write(struct.pack('<I', face.vertices[2]))       
 			face_count += 3
 
+		# for face in bm.faces:
+		# 	print(f"\nface.index: {face.index}")
+		# 	print(f"face.verts[0].index: {face.verts[0].index}")
+		# 	print(f"face.verts[1].index: {face.verts[1].index}")
+		# 	print(f"face.verts[2].index: {face.verts[2].index}")
+		# 	f.write(struct.pack('<III', face.verts[0].index, face.verts[1].index, face.verts[2].index))
+		# 	face_count += 3
+
 		section_length_table.append({'Offset': face_start, 'Size': f.tell() - face_start})     
 
-		f.close()
+		f.close() # Close mmesh
+		bm.free() # Free bmesh
 		
+
+		# Build minfo json
+
 		# j = open(os.path.splitext(filepath)[0] + ".json", 'w')
 		j = open(json_path, 'w')
 		

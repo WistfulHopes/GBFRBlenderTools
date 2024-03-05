@@ -28,10 +28,13 @@ class GBFRToolPanel(bpy.types.Panel):
 		button = row.operator("mesh.sort_materials", icon='MATERIAL')
 
 		row = box.row() ; row.scale_y = 0.5
-		row = box.row(align=True) ; row.scale_y = 1.5
+		row = box.row() ; row.scale_y = 0.5
+		row.label(text="Clean Up Mesh:", icon='MESH_DATA')
+		row = box.row() ; row.scale_y = 1.5
 		button = row.operator("mesh.limit_and_normalize_weights", icon='MESH_DATA')
+		row = box.row() ; row.scale_y = 1.5
+		button = row.operator("mesh.delete_loose_edges_and_verts", icon = "MESH_DATA")
 
-		
 		# ----------------------------
 		layout.label(text="Utilities", icon='MODIFIER')
 		box = layout.box()
@@ -62,6 +65,8 @@ class GBFRToolPanel(bpy.types.Panel):
 		
 		row = box.row()
 		button = row.operator("mesh.remove_doubles", text="Remove Doubles", icon='MESH_DATA')
+		button.use_unselected = True
+		button.threshold = 0.000001 # Use this threshold or all hell breaks loose
 		
 
 
@@ -83,7 +88,34 @@ class ButtonSplitMeshAlongUVs(bpy.types.Operator):
 	def execute(self, context):
 		try:
 			self.report({'INFO'}, f"Mesh(es) successfully split along UVs!")
+			utils_
 			split_faces_by_edge_seams(context.active_object)
+		except Exception as err:
+			print(f"{err}")
+			pass
+		return {'FINISHED'}
+
+class ButtonDeleteLooseGeometry(bpy.types.Operator):
+	bl_idname = "mesh.delete_loose_edges_and_verts"
+	bl_label = "Delete Loose Verts & Edges"
+	bl_description = "Deletes Loose any loose Vertices & Edges on the mesh so the model doesn't explode."
+	bl_options = {'REGISTER', 'UNDO'}
+
+	@classmethod
+	def poll(cls, context):
+		return (context.active_object is not None and
+				context.active_object.type == 'MESH')
+
+	def execute(self, context):
+		try:
+			mesh = context.active_object.data
+			init_verts = len(mesh.vertices) ; init_edges = len(mesh.edges) ; init_faces = len(mesh.polygons)
+			utils_set_mode('EDIT')
+			bpy.ops.mesh.select_all(action='SELECT')
+			bpy.ops.mesh.delete_loose(use_verts=True, use_edges=True, use_faces=False)
+			utils_set_mode('OBJECT')
+			removed_verts = init_verts - len(mesh.vertices) ; removed_edges = init_edges - len(mesh.edges) ; removed_faces = init_faces - len(mesh.polygons)
+			self.report({'INFO'}, f"Removed: {removed_verts} vertices, {removed_edges} edges, {removed_faces} faces")
 		except Exception as err:
 			print(f"{err}")
 			pass
@@ -265,6 +297,7 @@ def register():
 	bpy.utils.register_class(ButtonJoinAllMeshes)
 	bpy.utils.register_class(ButtonSelect0WeightVertices)
 	bpy.utils.register_class(ButtonLimitAndNormalizeAllWeights)
+	bpy.utils.register_class(ButtonDeleteLooseGeometry)
 
 # Unregister the panel class
 def unregister():
@@ -277,6 +310,7 @@ def unregister():
 	bpy.utils.unregister_class(ButtonJoinAllMeshes)
 	bpy.utils.unregister_class(ButtonSelect0WeightVertices)
 	bpy.utils.unregister_class(ButtonLimitAndNormalizeAllWeights)
+	bpy.utils.unregister_class(ButtonDeleteLooseGeometry)
 
 # Test the panel in Blender
 # if __name__ == "__main__":
