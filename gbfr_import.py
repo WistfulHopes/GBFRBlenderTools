@@ -20,7 +20,7 @@ def parse_skeleton(filepath, CurCollection):
 		CurCollection.objects.link(armature_obj)
 		bpy.context.view_layer.objects.active = armature_obj
 		utils_set_mode('EDIT')
-			
+
 		SkelTable = []
 		for n in range(skeleton.BodyLength()): # For bone index in skeleton
 			bone = skeleton.Body(n) # Get the bone's information
@@ -65,7 +65,7 @@ def parse_skeleton(filepath, CurCollection):
 						bone_coll = armature_obj.data.collections[bone_coll_name]
 
 					bone_coll.assign(edit_bone)
-				elif bpy.app.version >= (3, 6, 0):
+				elif bpy.app.version >= (3, 5, 0):
 					layer_idx = None
 					try:
 						layer_idx = int(bone_coll_name[1:], 16)
