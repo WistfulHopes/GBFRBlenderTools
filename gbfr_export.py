@@ -82,6 +82,11 @@ def write_some_data(context, filepath, export_scale):
 		#================================
 
 		obj.select_set(True) # Select mesh object
+		
+		# ensure the armature is not hidden so that the bpy.ops can effect it
+		if armature.hide_get() == True:
+			armature.hide_set(False)
+		
 		armature.select_set(True) # Select armature
 		bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) #Apply all transforms
 		armature.rotation_euler = (-1.5707963705062866,0,0) #Rotate back 90 to Y up
