@@ -2,10 +2,10 @@ import bpy
 from .utils import *
 
 # Define the panel class
-class GBFRToolPanel(bpy.types.Panel):
+class GBFRToolPanel_Fixes(bpy.types.Panel):
 	"""Creates a custom panel in the Object properties editor"""
-	bl_label = "GBFR Blender Tools"
-	bl_idname = "VIEW3D_PT_GBFR_Tools_Panel"
+	bl_label = "Fixes"
+	bl_idname = "VIEW3D_PT_GBFR_Tools_Panel_Fixes"
 	bl_space_type = 'VIEW_3D'
 	bl_region_type = 'UI'
 	bl_category = "GBFR"
@@ -13,7 +13,7 @@ class GBFRToolPanel(bpy.types.Panel):
 	def draw(self, context):
 		layout = self.layout
 		# Add a boolean property with a tooltip
-		layout.label(text="Fixes")
+		# layout.label(text="Fixes")
 		box = layout.box()
 
 		row = box.row(align=True) ;row.scale_y = 1.0
@@ -22,21 +22,31 @@ class GBFRToolPanel(bpy.types.Panel):
 		button = row.operator("mesh.split_mesh_along_uvs", icon='UV')
 		row = box.row() ; row.scale_y = 0.5
 
-		row = box.row() ; row.scale_y = 0.5
-		row.label(text="Recommended to use this before export", icon='ERROR')
-		row = box.row(align=True) ; row.scale_y = 1.5
-		button = row.operator("mesh.sort_materials", icon='MATERIAL')
+		# row = box.row() ; row.scale_y = 0.5
+		# row.label(text="Recommended to use this before export", icon='ERROR')
+		# row = box.row(align=True) ; row.scale_y = 1.5
+		# button = row.operator("mesh.sort_materials", icon='MATERIAL')
 
 		row = box.row() ; row.scale_y = 0.5
 		row = box.row() ; row.scale_y = 0.5
-		row.label(text="Clean Up Mesh:", icon='MESH_DATA')
+		row.label(text="Mesh Clean Up:", icon='MESH_DATA')
 		row = box.row() ; row.scale_y = 1.5
 		button = row.operator("mesh.limit_and_normalize_weights", icon='MESH_DATA')
 		row = box.row() ; row.scale_y = 1.5
 		button = row.operator("mesh.delete_loose_edges_and_verts", icon = "MESH_DATA")
 
 		# ----------------------------
-		layout.label(text="Utilities", icon='MODIFIER')
+
+class GBFRToolPanel_Utilities(bpy.types.Panel):
+	bl_label = "Utilities"
+	bl_idname = "VIEW3D_PT_GBFR_Tools_Panel_Utilities"
+	bl_space_type = 'VIEW_3D'
+	bl_region_type = 'UI'
+	bl_category = "GBFR"
+
+	def draw(self, context):
+		layout = self.layout
+		# layout.label(text="Utilities", icon='MODIFIER')
 		box = layout.box()
 
 		# Armature
@@ -67,12 +77,74 @@ class GBFRToolPanel(bpy.types.Panel):
 		button = row.operator("mesh.remove_doubles", text="Remove Doubles", icon='MESH_DATA')
 		button.use_unselected = True
 		button.threshold = 0.000001 # Use this threshold or all hell breaks loose
-		
+
+
+class GBFRToolPanel_Materials(bpy.types.Panel):
+	bl_label = "Materials"
+	bl_idname = "VIEW3D_PT_GBFR_Tools_Panel_Materials"
+	bl_space_type = 'VIEW_3D'
+	bl_region_type = 'UI'
+	bl_category = "GBFR"
+
+	def draw(self, context):
+		layout = self.layout
+		# layout.label(text="Materials", icon='MATERIAL')
+		box = layout.box()
+		obj = context.object
+		if obj and obj.type == 'MESH':
+			mesh = obj.data
+			materials = mesh.materials
+			row = box.row(align=False)
+			row.scale_y = 0.5
+			row.label(text = "Material Name:")
+			row.label(text = "Material Index:")
+			col = box.column(align=True)
+			for slot_index, material in enumerate(materials):
+				if material:
+					row = col.row(align=True)
+					row.prop(material, "name", text="")
+					material_id = material.get("MaterialID", None)
+					if material_id != None:
+						if material_id < 0 and material_id:
+							row.alert = True # Highlight red to alert user
+						row.prop(material, '["MaterialID"]', text="")						
+					else:
+						row.alert = True # Highlight red to alert user
+						op = row.operator("material.add_material_index")
+						op.material_slot = slot_index
 
 
 #=======================
 # Operator Classes
 #=======================
+
+class ButtonAddMaterialIndex(bpy.types.Operator):
+	bl_idname = "material.add_material_index"
+	bl_label = "Add Material Index"
+	bl_description = "Add a Material Index to this Material"
+	bl_options = {'REGISTER', 'UNDO'}
+
+	# material = bpy.props.PointerProperty(type=bpy.types.Material)
+	material_slot: bpy.props.IntProperty(default=-1)
+
+	@classmethod
+	def poll(cls, context):
+		return (context.active_object is not None and
+				context.active_object.type == 'MESH')
+
+	def execute(self, context):
+		try:
+			mesh = context.object.data
+			materials = mesh.materials
+			for slot_index, material in enumerate(materials):
+				if slot_index == self.material_slot:
+					material["MaterialID"] = -1
+					# self.report({'INFO'}, f"{material.name}")
+		except Exception as err:
+			raise Exception(f"{err}")
+		return {'FINISHED'}
+
+
 
 class ButtonSplitMeshAlongUVs(bpy.types.Operator):
 	bl_idname = "mesh.split_mesh_along_uvs"
@@ -206,7 +278,7 @@ class ButtonSortMaterials(bpy.types.Operator):
 			utils_reorder_materials(context)
 			self.report({'INFO'}, f"Sorted all Materials!")
 		except Exception as err:
-			print(f"{err}")
+			raise #print(f"{err}")
 			# raise Exception(f"{err}")
 			pass
 		return {'FINISHED'}
@@ -280,37 +352,21 @@ class ButtonLimitAndNormalizeAllWeights(bpy.types.Operator):
 		return {'FINISHED'}
 
 
-
-
-
-
-
+classes = [GBFRToolPanel_Fixes, GBFRToolPanel_Utilities, GBFRToolPanel_Materials,
+			ButtonSplitMeshAlongUVs, ButtonTranslateBonesToGBFR, ButtonTranslateBonesToUnityBlender, 
+			ButtonSeparateByMaterial, ButtonSortMaterials, ButtonJoinAllMeshes, ButtonSelect0WeightVertices, 
+			ButtonLimitAndNormalizeAllWeights, ButtonDeleteLooseGeometry, ButtonAddMaterialIndex
+			]
 
 # Register the panel class
 def register():
-	bpy.utils.register_class(GBFRToolPanel)
-	bpy.utils.register_class(ButtonSplitMeshAlongUVs)
-	bpy.utils.register_class(ButtonTranslateBonesToGBFR)
-	bpy.utils.register_class(ButtonTranslateBonesToUnityBlender)
-	bpy.utils.register_class(ButtonSeparateByMaterial)
-	bpy.utils.register_class(ButtonSortMaterials)
-	bpy.utils.register_class(ButtonJoinAllMeshes)
-	bpy.utils.register_class(ButtonSelect0WeightVertices)
-	bpy.utils.register_class(ButtonLimitAndNormalizeAllWeights)
-	bpy.utils.register_class(ButtonDeleteLooseGeometry)
+	for cls in classes:
+		bpy.utils.register_class(cls)
 
 # Unregister the panel class
 def unregister():
-	bpy.utils.unregister_class(GBFRToolPanel)
-	bpy.utils.unregister_class(ButtonSplitMeshAlongUVs)
-	bpy.utils.unregister_class(ButtonTranslateBonesToGBFR)
-	bpy.utils.unregister_class(ButtonTranslateBonesToUnityBlender)
-	bpy.utils.unregister_class(ButtonSeparateByMaterial)
-	bpy.utils.unregister_class(ButtonSortMaterials)
-	bpy.utils.unregister_class(ButtonJoinAllMeshes)
-	bpy.utils.unregister_class(ButtonSelect0WeightVertices)
-	bpy.utils.unregister_class(ButtonLimitAndNormalizeAllWeights)
-	bpy.utils.unregister_class(ButtonDeleteLooseGeometry)
+	for cls in classes:
+		bpy.utils.unregister_class(cls)
 
 # Test the panel in Blender
 # if __name__ == "__main__":

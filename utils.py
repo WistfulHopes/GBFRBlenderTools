@@ -171,6 +171,16 @@ def utils_separate_by_materials(context):
 # then by reverse numberically of the next 2 characters, then lastly by .# index at the end
 def utils_reorder_materials(context):
 	mesh_name = context.active_object.name
+	armature = context.active_object.find_armature()
+
+	if "material_order" in armature:
+		material_order = armature["material_order"]
+	else:
+		raise UserWarning(
+			format_exception("No imported material order stored for this model, unable to sort.")
+		)
+	
+
 	utils_separate_by_materials(context) #Separate by materials first to give the neshes their material names
 
 	# Get meshes
@@ -226,6 +236,7 @@ def utils_select_0_weight_vertices(mesh):
 	zero_weight_vert_count = 0
 	utils_set_mode('EDIT')
 	bpy.ops.mesh.select_mode(type="VERT")
+	bpy.ops.mesh.reveal(select=False) # Unhide all vertices
 	bpy.ops.mesh.select_all(action='DESELECT')
 	mesh_data = mesh.data
 	utils_set_mode('OBJECT') # Funny blender only allows object mode selection :)
@@ -247,4 +258,4 @@ def utils_limit_and_normalize_weights(mesh):
 		# limit total weights to 4
 		bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
 		# normalize all weights
-		bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL')
+		bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL', lock_active=False)

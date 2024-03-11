@@ -31,7 +31,10 @@ def replace_mesh_info(flatc_json, blender_json):
     # Replace the BonesToWeightIndices list with the blender export list
     flatc_json_data["BonesToWeightIndices"] = blender_json_data["BonesToWeightIndices"]
 
-    # Submeshes
+    # Replace Submeshes
+    flatc_json_data["SubMeshes"] = blender_json_data["SubMeshes"]
+
+    """
     # Get submesh names
     blender_json_submesh_names = blender_json_data["SubMeshes"]
     flatc_json_submesh_names = []
@@ -44,6 +47,7 @@ def replace_mesh_info(flatc_json, blender_json):
             new_submesh = copy.deepcopy(flatc_json_data["SubMeshes"][-1])
             new_submesh["Name"] = blender_submesh_name
             flatc_json_data["SubMeshes"].append(new_submesh)
+    """
 
     return json.dumps(flatc_json_data, indent=2) # Convert and return
 
