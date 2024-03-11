@@ -41,6 +41,8 @@ Granblue Fantasy Relink model Importer/Exporter for Blender
   * The mesh cannot have any vertices with zero vertex group weights assigned to it. Use the `Select Zero Weights` button in the GBFR tool shelf panel to select them. It is up to you to deal with them via weight painting, deleting, etc.
   * The arnature's bone names must match to the GBFR Bone Index names if they are to be animated. Use an original game model to see the naming scheme of humanoid bones (TODO: Create viewable bone name list).
   * The armature must be pointed upwards on the Z-Axis. Remember to `CTRL+A > All Transforms` to apply all transforms on the Armature.
+  * Models can only have 1 UV Map.
+  * The GBFR Model format has a limit of 65535 total vertex group weights. Your model should have a reasonable amount of bones to accomodate this, if not merge the bones down.
 
   ## Tool Shelf (Press `N` in the `3D View` to open the tool shelf, then click the `GBFR` Tab)
   * `Split Mesh along UVs:` Prevents the textures from looking warped in areas on export. (Makes sure to separate vertices that are shared among 2 separate UV islands).
