@@ -258,8 +258,10 @@ def read_some_data(context, filepath, import_scale):
 			chunk = LOD.Chunks(j)
 			if chunk.SubMesh() != i:
 				continue
-			mat = bpy.data.materials.new(name=sub_mesh.Name().decode() + "." + str(chunk.Material()))
+			mat_name = sub_mesh.Name().decode() + "#" + str(chunk.Material())
+			mat = bpy.data.materials.new(name=mat_name)
 			obj.data.materials.append(mat)
+			mat["MaterialID"] = chunk.Material() # Add material ID as custom property
 
 			chunk_offset = chunk.Offset() // 3
 			chunk_count = chunk.Count() // 3
@@ -280,6 +282,10 @@ def read_some_data(context, filepath, import_scale):
 					pass
 			
 			mat_counter += 1
+
+	# Store mat order in custom property on armature
+	mat_order = [mat.name for mat in obj.data.materials]
+	armature["material_order"] = mat_order
 		
 	if armature is not None:
 		ArmMod = obj.modifiers.new("Armature","ARMATURE")

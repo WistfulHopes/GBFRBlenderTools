@@ -6,6 +6,7 @@ import os
 import json
 import random
 import importlib
+from pprint import pprint
 # ExporterHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
 from bpy_extras.io_utils import ExportHelper
@@ -33,15 +34,17 @@ def write_some_data(context, filepath, export_scale):
 		# Get the path to flatc specified by user
 		flatc_file_path = bpy.context.preferences.addons[__package__].preferences.flatc_file_path
 		if os.path.exists(flatc_file_path) == False:
-			raise FileNotFoundError("ERROR: Please put in the correct path to FlatBuffers/flatc.exe " + 
-			"in the preferences for the GBFR Exporter addon settings under: Preferences > Addons")
+			raise FileNotFoundError(format_exception("ERROR: Please put in the correct path to FlatBuffers/flatc.exe " + 
+			"in the preferences for the GBFR Exporter addon settings under: Preferences > Addons"))
 		
 		# Check that a .minfo is present
 		if os.path.exists(minfo_path) == False:
-			raise FileNotFoundError("ERROR: No .minfo of same name found in export folder.\nMake sure the " + 
-			"model's original .minfo is in the folder you're exporting to, and that your export name matches.\n" + 
-			"Example: If exporting with 'pl1400.minfo', export name must be 'pl1400.mmesh' \n" + 
-			f"\nTried to find .minfo at: {minfo_path}")
+			raise FileNotFoundError(
+				format_exception("ERROR: No .minfo of same name found in export folder.\nMake sure the " + 
+				"model's original .minfo is in the folder you're exporting to, and that your export name matches.\n" + 
+				"Example: If exporting with 'pl1400.minfo', export name must be 'pl1400.mmesh' \n" + 
+				f"\nTried to find .minfo at: {minfo_path}")
+			)
 		
 		# f = open(os.path.splitext(filepath)[0] + ".mmesh", 'wb')
 		f = open(mmesh_path, 'wb')
@@ -60,6 +63,8 @@ def write_some_data(context, filepath, export_scale):
 		obj = context.object
 		mesh = obj.data
 
+		obj.hide_set(False) # ensure mesh object isnt hidden
+
 		utils_set_mode('EDIT')
 		bpy.ops.mesh.reveal() # Unhide all vertices
 		split_faces_by_edge_seams(obj) # Do this before anything else or BLENDER FUCKS UP THE NORMALS :)))))))))))
@@ -68,12 +73,15 @@ def write_some_data(context, filepath, export_scale):
 		# Get the model's armature
 		armature = obj.find_armature()
 		if armature == None or obj.parent.type != 'ARMATURE': # No armature attached to mesh, abort
-			raise TypeError("ERROR: The selected mesh has no armature.\n" + 
-			"Your model needs to have an armature.\nMake sure:" +
-			"1. You have the correct model selected.\n" +
-			"2. The mesh is parented to the armature.\n" +
-			"3. The mesh has an Armature Modifier set to the correct armature."
+			raise TypeError(
+				format_exception("ERROR: The selected mesh has no armature.\n" + 
+				"Your model needs to have an armature.\nMake sure:" +
+				"1. You have the correct model selected.\n" +
+				"2. The mesh is parented to the armature.\n" +
+				"3. The mesh has an Armature Modifier set to the correct armature.")
 			)
+		armature.hide_set(False) # ensure armature object isnt hidden
+
 		
 		print(f"armature.name {armature.name}")
 
@@ -102,7 +110,7 @@ def write_some_data(context, filepath, export_scale):
 		# Before sorting by materials, we need to switch to face select mode
 		mesh_select_mode_backup=tuple(bpy.context.scene.tool_settings.mesh_select_mode)
 		bpy.ops.mesh.select_mode(type='FACE')
-		bpy.ops.mesh.sort_elements(type='MATERIAL') # Sort faces by material
+		bpy.ops.mesh.sort_elements(type='MATERIAL', elements={'FACE'}) # Sort faces by material
 		bpy.context.scene.tool_settings.mesh_select_mode=mesh_select_mode_backup # Restore the mesh select mode
 		
 		utils_set_mode('OBJECT')
@@ -110,15 +118,15 @@ def write_some_data(context, filepath, export_scale):
 
 		for vg in obj.vertex_groups: # Limit and normalize weights
 			bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4) # limit total weights to 4
-			bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL') # normalize all weights
+			bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL', lock_active=False) # normalize all weights
 
 		# Re-encode and rename all the bone groups back to ints
-		if bpy.app.version >= (4, 0, 0):
+		if bpy.app.version >= (4, 0, 0): # Blender 4
 			for bone_collection in armature.data.collections:
 				encode_coll_name = bone_collection.name + '\x00\x00'
 				bone_collection.name = str(int.from_bytes(encode_coll_name.encode('ASCII'), 'big'))
 				print("Renamed bone group:", bone_collection.name)
-		else: 
+		else: # Blender 3
 			for bone_group in armature.pose.bone_groups:
 				encode_group_name = bone_group.name + '\x00\x00'
 				bone_group.name = str(int.from_bytes(encode_group_name.encode('ASCII'), 'big'))
@@ -130,11 +138,11 @@ def write_some_data(context, filepath, export_scale):
 		#================================
 
 		#Get BMesh from mesh
-		bm = bmesh.new()
-		bm.from_mesh(mesh)
-		bm.verts.ensure_lookup_table() # Ensure that the lookup tables are initialized
-		bm.edges.ensure_lookup_table()
-		bm.faces.ensure_lookup_table()
+		# bm = bmesh.new()
+		# bm.from_mesh(mesh)
+		# bm.verts.ensure_lookup_table() # Ensure that the lookup tables are initialized
+		# bm.edges.ensure_lookup_table()
+		# bm.faces.ensure_lookup_table()
 
 		vert_table = {}
 		section_length_table = []
@@ -279,7 +287,11 @@ def write_some_data(context, filepath, export_scale):
 					continue # Make sure we're only processing verts we're exporting
 				if len(v.groups) > 4:
 					fix_normals(obj)
-					raise UserWarning("Your model has one or more vertices with more than 4 vertex weights.\nTo export successfully, make sure to use Limit Total on your model.")
+					raise UserWarning(
+						format_exception("Your model has one or more vertices with more than 4 vertex weights.\n"
+						+"To export successfully, make sure to use Limit Total on your model."
+						)
+					)
 				for n in range(4):
 					if n >= len(v.groups):
 						weight_id_table.append(struct.pack('<H', 0))
@@ -292,9 +304,13 @@ def write_some_data(context, filepath, export_scale):
 								total_weight_float += v.groups[i].weight
 							if total_weight_float <= 0.99:
 								fix_normals(obj)
-								raise UserWarning("Your model has non-normalized weights.\n"
-								+"To export successfully, make sure to use Normalize All on your model.\n\n"
-								+"You may also be missing weights on some vertices, you cannot have geometry with 0 weights.")
+								raise UserWarning(
+									format_exception(
+									"Your model has non-normalized weights.\n"
+									+"To export successfully, make sure to use Normalize All on your model.\n\n"
+									+"You may also be missing weights on some vertices, you cannot have geometry with 0 weights."
+									)
+								)
 							if total_weight != 65535:
 								index_max = max(range(4), key=weight_table[-4:].__getitem__)
 								weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
@@ -317,9 +333,12 @@ def write_some_data(context, filepath, export_scale):
 							total_weight_float += v.groups[i].weight
 						if total_weight_float <= 0.99:
 							fix_normals(obj)
-							raise UserWarning("Your model has non-normalized weights.\n"
-							+ "To export successfully, make sure to use Normalize All on your model.\n\n"
-							+ "You may also be missing weights on some vertices, you cannot have geometry with 0 weights.")
+							raise UserWarning(
+								format_exception("Your model has non-normalized weights.\n"
+								+ "To export successfully, make sure to use Normalize All on your model.\n\n"
+								+ "You may also be missing weights on some vertices, you cannot have geometry with 0 weights."
+								)
+							)
 						if total_weight != 65535:
 							index_max = max(range(4), key=weight_table[-4:].__getitem__)
 							weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
@@ -367,7 +386,7 @@ def write_some_data(context, filepath, export_scale):
 		section_length_table.append({'Offset': face_start, 'Size': f.tell() - face_start})     
 
 		f.close() # Close mmesh
-		bm.free() # Free bmesh
+		# bm.free() # Free bmesh
 		
 
 		# Build minfo json
@@ -375,16 +394,46 @@ def write_some_data(context, filepath, export_scale):
 		# j = open(os.path.splitext(filepath)[0] + ".json", 'w')
 		j = open(json_path, 'w')
 		
-		sub_mesh_table = []
+		
+		#------------------------------------------
+		# Construct chunks and sub meshes list from materials
+		sub_meshes_table = []
+		sub_mesh_list = []
 		chunk_table = []
-
+		sub_mesh_ids = {}
+		chunk_bounds = {}
 		sub_mesh_count = -1
+		for i, material in enumerate(mesh.materials): 
+			# Check material index exists and is valid
+			if "MaterialID" not in material:
+				raise UserWarning(
+					format_exception(f"Material '{material.name}' has no Material Index assigned!\n"
+					+ "Please select the mesh and use the GBFR Tool Shelf Panel in the 3D view to assign one and set it to a non-negative number.\n"
+					+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
+				)
+			if material["MaterialID"] < 0:
+				raise UserWarning(
+					format_exception(f"Material Index '{material['MaterialID']}' on {material.name} is invalid.\n"
+					+ "Please select the mesh and set it to a non-negative number in the GBFR Tool shelf panel.\n"
+					+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
+				)
 
-		for i, material in enumerate(mesh.materials):
-			chunk = material.name.split(".")
-			if chunk[0] not in sub_mesh_table:
-				sub_mesh_table.append(chunk[0])
+			# Add material name to submesh table
+			chunk_name = material.name.split("#")[0]
+			if chunk_name not in sub_mesh_list:
+				sub_mesh_list.append(chunk_name)
 				sub_mesh_count += 1
+				sub_mesh_ids[chunk_name] = sub_mesh_count
+				sub_mesh_id = sub_mesh_count
+			else:
+				sub_mesh_id = sub_mesh_ids[chunk_name]
+				
+			print(f"\nsub_mesh_ids[chunk_name]: {sub_mesh_ids[chunk_name]}")
+			print(f"sub_mesh_list: {sub_mesh_list}")
+			print(f"sub_mesh_id: {sub_mesh_id}")
+
+			# Get material index
+			chunk = material["MaterialID"]
 			
 			chunk_start = -1
 			chunk_end = -1
@@ -394,11 +443,40 @@ def write_some_data(context, filepath, export_scale):
 					chunk_start = face.index * 3
 				elif chunk_start != -1 and face.material_index != i:
 					break
+
+				# Get chunk's bounds
+				face_mat_index = face.material_index
+				if chunk_name not in chunk_bounds:
+					chunk_bounds[chunk_name] = { #Initialize chunk bounds at infinity
+						"Min": {"x": float('inf'), "y": float('inf'), "z": float('inf')},
+						"Max": {"x": float('-inf'), "y": float('-inf'), "z": float('-inf')}
+					}
+				for vert_index in face.vertices: #Calculate bounds
+					vert_co = mesh.vertices[vert_index].co
+					chunk_bounds[chunk_name]["Min"]["x"] = min(chunk_bounds[chunk_name]["Min"]["x"], vert_co.x)
+					chunk_bounds[chunk_name]["Min"]["y"] = min(chunk_bounds[chunk_name]["Min"]["y"], vert_co.y)
+					chunk_bounds[chunk_name]["Min"]["z"] = min(chunk_bounds[chunk_name]["Min"]["z"], vert_co.z)
+					chunk_bounds[chunk_name]["Max"]["x"] = max(chunk_bounds[chunk_name]["Max"]["x"], vert_co.x)
+					chunk_bounds[chunk_name]["Max"]["y"] = max(chunk_bounds[chunk_name]["Max"]["y"], vert_co.y)
+					chunk_bounds[chunk_name]["Max"]["z"] = max(chunk_bounds[chunk_name]["Max"]["z"], vert_co.z)
+
+			# pprint(chunk_bounds)
+			# raise Exception("DADASASDAF")
 			if i == len(mesh.materials) - 1:
 				chunk_end += 3
-			chunk_table.append({'Offset': chunk_start, 'Count': chunk_end - chunk_start, 'SubMeshID': sub_mesh_count, 'MaterialID': int(chunk[1]), 'Unk1': 0, 'Unk2': 0})
-		
-		jobj = {'MeshBuffers': section_length_table, 'Chunks': chunk_table, 'VertCount': vert_count, 'PolyCountX3': face_count, 'BufferTypes': 11, 'SubMeshes': sub_mesh_table, 'BonesToWeightIndices': DeformJointsTable}
+			chunk_table.append({'Offset': chunk_start, 'Count': chunk_end - chunk_start, 'SubMeshID': sub_mesh_id, 'MaterialID': int(chunk), 'Unk1': 0, 'Unk2': 0})
+			
+		# Construct and append sub mesh to sub meshes table
+		for chunk_name in sub_mesh_list:
+			sub_mesh_dict = {}
+			sub_mesh_dict["Name"] = chunk_name
+			sub_mesh_dict["BBox"] = {"Min": chunk_bounds[chunk_name]["Min"], "Max": chunk_bounds[chunk_name]["Max"]}
+			sub_meshes_table.append(sub_mesh_dict)
+
+		pprint(sub_meshes_table)
+		# raise Exception("AADFEFEFFGFGERWG")
+
+		jobj = {'MeshBuffers': section_length_table, 'Chunks': chunk_table, 'VertCount': vert_count, 'PolyCountX3': face_count, 'BufferTypes': 11, 'SubMeshes': sub_meshes_table, 'BonesToWeightIndices': DeformJointsTable}
 		
 		j.write(json.dumps(jobj, indent=2))
 		j.close()
@@ -412,7 +490,7 @@ def write_some_data(context, filepath, export_scale):
 		MInfo_Converter.convert_minfo(flatc_file_path, minfo_path, json_path)
 		return {'FINISHED'}
 	except Exception as err:
-		raise Exception(err)
+		raise #Exception(err)
 	finally:
 		# Ensure that all created files are closed (released by file system)
 		try: 
@@ -442,11 +520,12 @@ class ExportSomeData(Operator, ExportHelper):
 		maxlen=255,  # Max internal buffer length, longer would be clamped.
 	)
 	export_scale: bpy.props.FloatProperty(name="Scale", default=1.0)
-	split_faces: bpy.props.BoolProperty(name="Split All Faces (TOGGLE NOT IMPLEMENTED)", 
-		description="Splits each face on the mesh so they are separate from each other.\n Helps avoid UV islands stitching while maintaining Normals.",
-		default=True)
 
 	def execute(self, context):
+		# if mesh_count > 1:
+			# bpy.ops.gbfr.display_error('INVOKE_DEFAULT')
+			# return {'FINISHED'}
+
 		original_scene = bpy.context.scene # Store the current scene to revert later
 
 		export_scene = bpy.data.scenes.new(name="Export_Scene") # Create a new scene for export
@@ -458,15 +537,20 @@ class ExportSomeData(Operator, ExportHelper):
 
 			# Get model's armature and mesh
 			selected_obj = context.object # Get active object
-			if selected_obj == None: raise UserWarning("ERROR: Select the model before exporting.")
+			if selected_obj == None: raise UserWarning(
+				format_exception("ERROR: Select the model before exporting.")
+				)
 
 			if selected_obj.type == 'MESH':
 				#---------------------------------
 				if selected_obj.parent.type == 'ARMATURE':
 					selected_obj = selected_obj.parent # Set armature as selected
-				else: raise UserWarning("ERROR: Selected Mesh has no armature as parent!\nMake sure:" +
-					"1. You have the correct mesh selected.\n" +
-					"2. The mesh is parented to the armature.\n")
+				else: raise UserWarning(
+						format_exception("ERROR: Selected Mesh has no armature as parent!\nMake sure:" +
+						"1. You have the correct mesh selected.\n" +
+						"2. The mesh is parented to the armature.\n"
+						)
+					)
 
 			if selected_obj.type == 'ARMATURE':
 				# Duplicate object and link to export scene
@@ -502,18 +586,47 @@ class ExportSomeData(Operator, ExportHelper):
 
 				write_some_data(context, self.filepath, self.export_scale) # Export the model
 
-			else: raise UserWarning("ERROR: No model selected, select the model's armature or mesh before export.")
+			else: raise UserWarning(
+				format_exception("ERROR: No model selected, select the model's armature or mesh before export.")
+				)
 
 			self.report({'INFO'}, f"Export Finished!")
 
 		except Exception as err:
-			raise Exception(format_exception(str(err))) # Print noob friendly exception
+			raise #Exception(format_exception(str(err))) # Print noob friendly exception
 			# raise Exception(str(err))
 		finally:
 			try: bpy.data.scenes.remove(export_scene) # Make sure export scene gets deleted
 			except: pass
 
 		return {'FINISHED'}
+
+
+class ErrorDisplay(bpy.types.Operator):
+	bl_idname = "gbfr.display_error"
+	bl_label = "WARNING"
+	bl_options = {'INTERNAL'}
+
+	def execute(self, context):
+		return {'FINISHED'}
+
+	def invoke(self,context,event):
+		return context.window_manager.invoke_props_dialog(self, width = 400)
+
+	def draw(self, context):
+		layout = self.layout
+		col = layout.column(align=True)
+
+		row = col.row(align=True)
+		row.label(text="WARNING: MORE THAN 1 MESH DETECTED ON MODEL!", icon='ERROR')
+		row = col.row(align=True)
+		row.label(text="You can only have 1 mesh object on the model.")
+		row = col.row(align=True)
+		row.label(text="Make sure to join all your meshes.")
+		row = col.row(align=True)
+		row.label(text="Press OK to proceed anyway.")
+		col.separator()
+
 
 # Only needed if you want to add into a dynamic menu
 def menu_func_export(self, context):
@@ -523,13 +636,13 @@ def menu_func_export(self, context):
 # Register and add to the "file selector" menu (required to use F3 search "Text Export Operator" for quick access).
 def register():
 	bpy.utils.register_class(ExportSomeData)
-	# bpy.utils.register_class(AddonPreferences)
+	bpy.utils.register_class(ErrorDisplay)
 	bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
 
 def unregister():
 	bpy.utils.unregister_class(ExportSomeData)
-	# bpy.utils.unregister_class(AddonPreferences)
+	bpy.utils.unregister_class(ErrorDisplay)
 	bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 
 
