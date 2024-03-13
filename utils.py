@@ -57,9 +57,9 @@ def split_faces_by_edge_seams(obj): # Split mesh faces by seams
 bone_names_mapping = {
 	"_900": ["Root"],
 	"_000": ["Hips", "Waist", "Pelvis"],
-	"_001": ["Spine 1"],
-	"_002": ["Spine 2"],
-	"_003": ["Chest", "Upper Chest", "Spine 3"],
+	"_001": ["Spine_1", "Spine"],
+	"_002": ["Spine_2"],
+	"_003": ["Chest", "Upper Chest"],
 	"_004": ["Neck"],
 	"_a04": ["Neck Deform", "Neck Twist"],
 	"_005": ["Head"],
