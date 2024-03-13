@@ -49,12 +49,12 @@ def parse_skeleton(filepath, CurCollection):
 				edit_bone.parent = armature_obj.data.edit_bones[parent_index]
 
 			# Set up blender bone collection (Import Only) # Credit to bujyu-uo
-			Unk = None
+			bone_coll_str = None
 			if bone.A1() is not None:
-				Unk = bone.A1().Unk()
-			if Unk is not None:
+				bone_coll_str = bone.A1().Unk()
+			if bone_coll_str is not None:
 				try:
-					bone_coll_name = Unk.to_bytes(4, "big").decode("ASCII").rstrip('\x00')
+					bone_coll_name = bone_coll_str.to_bytes(4, "big").decode("ASCII").rstrip('\x00')
 				except:
 					bone_coll_name = "_z"
 

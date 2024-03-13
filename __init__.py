@@ -1,12 +1,13 @@
 bl_info = {
     "name": "Granblue Fantasy Relink Blender Tools",
     "author": "WistfulHopes & AlphaSatanOmega",
-    "version": (0, 5, 4),
+    "version": (1, 0, 0),
     "blender": (3, 5, 0),
     "location": "File > Import/Export | View 3D > Tool Shelf > GBFR",
     "description": "Tool to import & export models from Granblue Fantasy Relink",
     "warning": "",
     "category": "Import-Export",
+    "doc_url": "https://github.com/WistfulHopes/GBFRBlenderTools?tab=readme-ov-file#gbfr-blender-tools"
 }
 
 # Reloads the addons on script reload

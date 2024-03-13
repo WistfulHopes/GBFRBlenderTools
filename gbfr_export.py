@@ -128,15 +128,36 @@ def write_some_data(context, filepath, export_scale):
 		# Re-encode and rename all the bone groups back to ints
 		if bpy.app.version >= (4, 0, 0): # Blender 4
 			for bone_collection in armature.data.collections:
-				encode_coll_name = bone_collection.name + '\x00\x00'
-				bone_collection.name = str(int.from_bytes(encode_coll_name.encode('ASCII'), 'big'))
+				encode_coll_name = bone_collection.name[0:2] + '\x00\x00'
+				try:
+					bone_collection.name = str(int.from_bytes(encode_coll_name.encode('ASCII'), 'big'))
+				except:
+					raise(
+						format_exception(f"Bone group name '{bone_collection.name}' is invalid.\n" 
+						+ "When exporting to GBFR, Bone group names can only:\n"
+						+ "1. be 2 characters long\n"
+						+ "2. consist only of alphanumeric characters, no unicode (i.e. japanese symbols).")
+						)
 				print("Renamed bone group:", bone_collection.name)
 		else: # Blender 3
 			for bone_group in armature.pose.bone_groups:
-				encode_group_name = bone_group.name + '\x00\x00'
-				bone_group.name = str(int.from_bytes(encode_group_name.encode('ASCII'), 'big'))
+				encode_group_name = bone_group.name[0:2] + '\x00\x00'
+				try:
+					bone_group.name = str(int.from_bytes(encode_group_name.encode('ASCII'), 'big'))
+				except:
+					raise(
+						format_exception(f"Bone group name '{bone_group.name}' is invalid.\n" 
+						+ "When exporting to GBFR, Bone group names can only:\n"
+						+ "1. be 2 characters long\n"
+						+ "2. consist only of alphanumeric characters, no unicode (i.e. japanese symbols).")
+						)
 				print("Renamed bone group to:", bone_group.name)
 
+		# Check that mesh only has 1 UV map
+		if len(mesh.uv_layers) > 1:
+			raise Exception(
+				format_exception(f"Mesh has {len(mesh.uv_layers)} UV maps. GBFR Models can only have 1 UV map.")
+			)
 
 		#================================
 		# Build file
@@ -344,9 +365,16 @@ def write_some_data(context, filepath, export_scale):
 								+ "You may also be missing weights on some vertices, you cannot have geometry with 0 weights."
 								)
 							)
-						if total_weight != 65535:
+						if total_weight != 65535: #TODO: Should be less than 65535? Investigate
 							index_max = max(range(4), key=weight_table[-4:].__getitem__)
-							weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
+							print(f"total_weight: {total_weight} | index_max:{index_max}")
+							try:
+								weight_table[-4 + index_max] = struct.pack('<H', int(v.groups[index_max].weight * 65535) + (65535 - total_weight))
+							except:
+								raise UserWarning(
+									format_exception("Your model probably has way too many bones, merge bones together until you have a reasonable amount.\n"
+									+ "Make sure you're merging the vertex groups as well, don't just delete bones.")
+								)
 			
 			# Assign weights		
 			weight_id_start = f.tell()
@@ -433,9 +461,9 @@ def write_some_data(context, filepath, export_scale):
 			else:
 				sub_mesh_id = sub_mesh_ids[chunk_name]
 				
-			print(f"\nsub_mesh_ids[chunk_name]: {sub_mesh_ids[chunk_name]}")
-			print(f"sub_mesh_list: {sub_mesh_list}")
-			print(f"sub_mesh_id: {sub_mesh_id}")
+			# print(f"\nsub_mesh_ids[chunk_name]: {sub_mesh_ids[chunk_name]}")
+			# print(f"sub_mesh_list: {sub_mesh_list}")
+			# print(f"sub_mesh_id: {sub_mesh_id}")
 
 			# Get material index
 			chunk = material["MaterialID"]
@@ -465,8 +493,6 @@ def write_some_data(context, filepath, export_scale):
 					chunk_bounds[chunk_name]["Max"]["y"] = max(chunk_bounds[chunk_name]["Max"]["y"], vert_co.y)
 					chunk_bounds[chunk_name]["Max"]["z"] = max(chunk_bounds[chunk_name]["Max"]["z"], vert_co.z)
 
-			# pprint(chunk_bounds)
-			# raise Exception("DADASASDAF")
 			if i == len(mesh.materials) - 1:
 				chunk_end += 3
 			chunk_table.append({'Offset': chunk_start, 'Count': chunk_end - chunk_start, 'SubMeshID': sub_mesh_id, 'MaterialID': int(chunk), 'Unk1': 0, 'Unk2': 0})
@@ -479,7 +505,6 @@ def write_some_data(context, filepath, export_scale):
 			sub_meshes_table.append(sub_mesh_dict)
 
 		pprint(sub_meshes_table)
-		# raise Exception("AADFEFEFFGFGERWG")
 
 		jobj = {'MeshBuffers': section_length_table, 'Chunks': chunk_table, 'VertCount': vert_count, 'PolyCountX3': face_count, 'BufferTypes': 11, 'SubMeshes': sub_meshes_table, 'BonesToWeightIndices': DeformJointsTable}
 		
