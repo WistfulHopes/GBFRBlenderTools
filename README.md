@@ -37,7 +37,7 @@ An Addon for Blender for Importing
   This list is subject to change as model exporting changes and is more fully understood.
   * The model must have an armature and a mesh.
   * The model can only have 1 Mesh object, you must join all meshes together.
-  * Each material must be assigned a material index using the GBFR Tool Shelf Panel. These indices correspond with the materials list found in the model's `.mmat` files.
+  * Each material must be assigned a material index using the [GBFR Tool Shelf Panel](https://github.com/WistfulHopes/GBFRBlenderTools/blob/main/README.md#tool-shelf). These indices correspond with the materials list found in the model's `.mmat` files.
   * The mesh cannot have any vertices with zero vertex group weights assigned to it. Use the `Select Zero Weights` button in the GBFR tool shelf panel to select them. It is up to you to deal with them via weight painting, deleting, etc.
   * The arnature's bone names must match to the GBFR Bone Index names if they are to be animated. Use an original game model to see the naming scheme of humanoid bones (TODO: Create viewable bone name list).
   * The armature must be pointed upwards on the Z-Axis. Remember to `CTRL+A > All Transforms` to apply all transforms on the Armature.
