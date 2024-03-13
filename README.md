@@ -1,7 +1,9 @@
-# GBFR Blender Tools
-An Addon for Blender for Importing
+<h1 align="center">GBFR Blender Tools</h1>
+<h3 align="center">An Addon for Blender for Importing/Exporting and Working with Models from Granblue Fantasy: Relink</h3>
 
-# [Download](https://github.com/WistfulHopes/GBFRBlenderTools/releases)
+<h1 align="center"><a href="https://github.com/WistfulHopes/GBFRBlenderTools/releases/latest/download/io_gbfr_blender_tools.zip">Download</a></h1>
+
+---
 
 # Requirements
 * [Blender (3.5 or Higher)](https://www.blender.org/download/)
@@ -15,6 +17,8 @@ An Addon for Blender for Importing
 5. Toggle on the checkbox for the addon.
 6. In the addon's prefences, set the filepath to the FlatBuffers `flatc.exe` file.
 7. Close preferences.
+
+---
 
 # Usage
   ## Importing
@@ -58,6 +62,8 @@ An Addon for Blender for Importing
   * `Remove Doubles:` Joins vertices that are very close together but not joined.
   
   * `Materials Section:` Use this section to set the material indices of the materials that will correlate with the materials listed in the `.mmat`s.
+
+---
 
 ## Discord (EN)
 Join the Relink Modding Discord For help, guidance & more!
