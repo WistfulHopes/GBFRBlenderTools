@@ -1,5 +1,5 @@
 # GBFR Blender Tools
-Granblue Fantasy Relink model Importer/Exporter for Blender
+An Addon for Blender for Importing
 
 # [Download](https://github.com/WistfulHopes/GBFRBlenderTools/releases)
 
@@ -37,12 +37,13 @@ Granblue Fantasy Relink model Importer/Exporter for Blender
   This list is subject to change as model exporting changes and is more fully understood.
   * The model must have an armature and a mesh.
   * The model can only have 1 Mesh object, you must join all meshes together.
-  * The mesh's material list must be in the same order as it was upon import. If it's out of order, separate by materials and join the meshes one by one in the correct order.
+  * Each material must be assigned a material index using the GBFR Tool Shelf Panel. These indices correspond with the materials list found in the model's `.mmat` files.
   * The mesh cannot have any vertices with zero vertex group weights assigned to it. Use the `Select Zero Weights` button in the GBFR tool shelf panel to select them. It is up to you to deal with them via weight painting, deleting, etc.
   * The arnature's bone names must match to the GBFR Bone Index names if they are to be animated. Use an original game model to see the naming scheme of humanoid bones (TODO: Create viewable bone name list).
   * The armature must be pointed upwards on the Z-Axis. Remember to `CTRL+A > All Transforms` to apply all transforms on the Armature.
   * Models can only have 1 UV Map.
   * The GBFR Model format has a limit of 65535 total vertex group weights. Your model should have a reasonable amount of bones to accomodate this, if not merge the bones down.
+  * Bone collection/group names can only contain alphanumeric characters, no special characters (i.e. Japanese characters)
 
   ## Tool Shelf (Press `N` in the `3D View` to open the tool shelf, then click the `GBFR` Tab)
   * `Split Mesh along UVs:` Prevents the textures from looking warped in areas on export. (Makes sure to separate vertices that are shared among 2 separate UV islands).
@@ -54,6 +55,8 @@ Granblue Fantasy Relink model Importer/Exporter for Blender
   * `Select Zero Weight Vertices:` Selects all vertices that are not connected to any bones. Exporting with 0 weight vertices fails, so this prevents this highlights the unweighted vertices for you to deal with.
   * `Flip Normals:` Flips the facing of selected geometry in edit mode, so if the model appears inside out, you can flip the facing so it's right-side out.
   * `Remove Doubles:` Joins vertices that are very close together but not joined.
+  
+  * `Materials Section:` Use this section to set the material indices of the materials that will correlate with the materials listed in the `.mmat`s.
 
 ## Discord (EN)
 Join the Relink Modding Discord For help, guidance & more!
