@@ -45,7 +45,8 @@ An Addon for Blender for Importing
   * The GBFR Model format has a limit of 65535 total vertex group weights. Your model should have a reasonable amount of bones to accomodate this, if not merge the bones down.
   * Bone collection/group names can only contain alphanumeric characters, no special characters (i.e. Japanese characters)
 
-  ## Tool Shelf (Press `N` in the `3D View` to open the tool shelf, then click the `GBFR` Tab)
+  ## Tool Shelf 
+  ### (Press `N` in the `3D View` to open the tool shelf, then click the `GBFR` Tab)
   * `Split Mesh along UVs:` Prevents the textures from looking warped in areas on export. (Makes sure to separate vertices that are shared among 2 separate UV islands).
   * `Sort Materials:` Sorts the order of the materials list so it should be close enough to how they import. Helps with stopping materials from going invisible when out of order.
   * `Limit & Normalize Weights:` Limits all vertex weights to 4 groups and normalizes them.
