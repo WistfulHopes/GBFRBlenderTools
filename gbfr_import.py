@@ -160,6 +160,13 @@ def read_some_data(context, filepath, import_scale):
 	
 	if armature is not None:
 		armature.name = f"{model_name}" # Set armature name
+		
+		armature["Magic"] = mesh_info.Magic() # Add minfo magic number
+		# Set up magic property
+		armature.id_properties_ensure() # ensure manager is updated
+		prop_manager = armature.id_properties_ui("Magic")
+		prop_manager.update(min=0, max=100000000, default = utils_get_magic())
+
 		print(f"LOD.BufferTypes() {LOD.BufferTypes()}")
 		if LOD.BufferTypes() & 2:
 			f.seek(LOD.MeshBuffers(1).Offset())
@@ -283,15 +290,16 @@ def read_some_data(context, filepath, import_scale):
 			
 			mat_counter += 1
 
-	# Store mat order in custom property on armature
-	mat_order = [mat.name for mat in obj.data.materials]
-	armature["material_order"] = mat_order
-		
+	
 	if armature is not None:
 		ArmMod = obj.modifiers.new("Armature","ARMATURE")
 		ArmMod.object = armature
 		obj.parent = armature
 		armature.rotation_euler = (1.5707963705062866,0,0) # Rotate 90 degrees from Y up to Z up
+
+		# Store mat order in custom property on armature
+		mat_order = [mat.name for mat in obj.data.materials]
+		armature["material_order"] = mat_order
 	
 	obj.select_set(True)
 	utils_set_mode('EDIT')

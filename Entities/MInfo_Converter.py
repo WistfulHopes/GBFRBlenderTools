@@ -15,24 +15,27 @@ import time
 def preprocess_flatbuffers_json(json_data):
     return re.sub(r'(\w+)(?=\s*:)', r'"\1"', json_data) # Use regular expression to wrap field names in quotes
 
-def replace_mesh_info(flatc_json, blender_json):
+def replace_mesh_info(flatc_json, blender_json, magic = None):
     # Load json data from files
     flatc_json_data = json.loads(flatc_json)
     blender_json_data = json.loads(blender_json)
 
+    if magic: # Overwrite magic if number provided
+        flatc_json_data["magic"] = magic
+
     # Replace the mesh info in the flatc json with the mesh info from the blender export json
-    keys_to_replace = ["MeshBuffers", "Chunks", "VertCount", "PolyCountX3", "BufferTypes"]
-    for lod_index in range(len(flatc_json_data["LODInfos"])):
+    keys_to_replace = ["mesh_buffers", "chunks", "vertex_count", "poly_count_x3", "buffer_types"]
+    for lod_index in range(len(flatc_json_data["lods"])):
         for key in keys_to_replace:
-            flatc_json_data["LODInfos"][lod_index][key] = blender_json_data[key]
-    # Just set the LODInfos array to contain the Highest LOD
-    flatc_json_data["LODInfos"] = [flatc_json_data["LODInfos"][0]]
+            flatc_json_data["lods"][lod_index][key] = blender_json_data[key]
+    # Just set the lods array to contain the Highest LOD
+    flatc_json_data["lods"] = [flatc_json_data["lods"][0]]
 
-    # Replace the BonesToWeightIndices list with the blender export list
-    flatc_json_data["BonesToWeightIndices"] = blender_json_data["BonesToWeightIndices"]
+    # Replace the bones_to_weight_indices list with the blender export list
+    flatc_json_data["bones_to_weight_indices"] = blender_json_data["bones_to_weight_indices"]
 
-    # Replace Submeshes
-    flatc_json_data["SubMeshes"] = blender_json_data["SubMeshes"]
+    # Replace Sub meshes
+    flatc_json_data["sub_meshes"] = blender_json_data["sub_meshes"]
 
     """
     # Get submesh names
@@ -51,7 +54,7 @@ def replace_mesh_info(flatc_json, blender_json):
 
     return json.dumps(flatc_json_data, indent=2) # Convert and return
 
-def convert_minfo(flatc_path, minfo_path, blender_json_path):
+def convert_minfo(flatc_path, minfo_path, blender_json_path, magic = None):
     print ("Start MInfo Conversion.")
     
     if os.path.dirname(minfo_path) != os.path.dirname(blender_json_path):
@@ -81,7 +84,7 @@ def convert_minfo(flatc_path, minfo_path, blender_json_path):
         flatc_json = preprocess_flatbuffers_json(flatc_json) # Fix flatc json
         
     # Replace the mesh info of flatc json with blender export json's mesh info
-    modified_flatc_json = replace_mesh_info(flatc_json, blender_json)
+    modified_flatc_json = replace_mesh_info(flatc_json, blender_json, magic)
     # print(modified_flatc_json)
     # Save modified flatc to a file in the same directory as the script
     # os.path.join(export_dir, f"{model_name}.json")
