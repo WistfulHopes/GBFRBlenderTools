@@ -30,8 +30,8 @@ class GBFRToolPanel_Fixes(bpy.types.Panel):
 		row.label(text="Split Vertices:", icon="MESH_DATA")
 		row = box.row(align=True) ; row.scale_y = 1.5
 		button = row.operator("mesh.split_mesh_along_uvs", icon='UV')
-		row = box.row() ; row.scale_y = 0.5
 
+		# row = box.row() ; row.scale_y = 0.5
 		# row = box.row() ; row.scale_y = 0.5
 		# row.label(text="Recommended to use this before export", icon='ERROR')
 		# row = box.row(align=True) ; row.scale_y = 1.5
