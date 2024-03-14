@@ -3,6 +3,9 @@ import os
 import webbrowser
 from .utils import *
 
+# "bpy.utils.previews" needs importing separately
+import bpy.utils.previews
+
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 ICONS_PATH = os.path.join(DIR_PATH, "icons")
 PCOLL = None
@@ -216,7 +219,7 @@ class ButtonSplitMeshAlongUVs(bpy.types.Operator):
 	def execute(self, context):
 		try:
 			self.report({'INFO'}, f"Mesh(es) successfully split along UVs!")
-			utils_
+			#utils_ # typo?
 			split_faces_by_edge_seams(context.active_object)
 		except Exception as err:
 			print(f"{err}")
