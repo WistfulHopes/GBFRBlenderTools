@@ -1,12 +1,14 @@
 import bpy
 import os
 import webbrowser
+import urllib.request
 from .utils import *
 
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 ICONS_PATH = os.path.join(DIR_PATH, "icons")
 PCOLL = None
 preview_collections = {}
+curr_game_magic = utils_get_magic()
 
 # Define the panel class
 class GBFRToolPanel_Fixes(bpy.types.Panel):
@@ -23,18 +25,18 @@ class GBFRToolPanel_Fixes(bpy.types.Panel):
 		# layout.label(text="Fixes")
 		box = layout.box()
 
-		row = box.row(align=True) ;row.scale_y = 1.0
+		row = box.row(align=True) ; row.scale_y = 0.5
 		row.label(text="Split Vertices:", icon="MESH_DATA")
 		row = box.row(align=True) ; row.scale_y = 1.5
 		button = row.operator("mesh.split_mesh_along_uvs", icon='UV')
-		row = box.row() ; row.scale_y = 0.5
+		# row = box.row() ; row.scale_y = 0.5
 
 		# row = box.row() ; row.scale_y = 0.5
 		# row.label(text="Recommended to use this before export", icon='ERROR')
 		# row = box.row(align=True) ; row.scale_y = 1.5
 		# button = row.operator("mesh.sort_materials", icon='MATERIAL')
 
-		row = box.row() ; row.scale_y = 0.5
+		# row = box.row() ; row.scale_y = 0.5
 		row = box.row() ; row.scale_y = 0.5
 		row.label(text="Mesh Clean Up:", icon='MESH_DATA')
 		row = box.row() ; row.scale_y = 1.5
@@ -130,6 +132,42 @@ class GBFRToolPanel_Materials(bpy.types.Panel):
 			row = box.row(align=False)
 			row.label(text = "Select a mesh to configure materials.", icon = "ERROR")
 
+class GBFRToolPanel_Advanced(bpy.types.Panel):
+	bl_label = "Advanced"
+	bl_idname = "VIEW3D_PT_GBFR_Tools_Panel_Advanced"
+	bl_space_type = 'VIEW_3D'
+	bl_region_type = 'UI'
+	bl_category = "GBFR"
+	bl_options = {"DEFAULT_CLOSED"}
+
+	def draw(self, context):
+		layout = self.layout
+		box = layout.box()
+		col = box.column(align=True)
+		obj = context.object
+		if obj and obj.type != 'ARMATURE':
+			if obj.parent.type == 'ARMATURE':
+				obj = obj.parent
+		armature = obj
+		if armature and armature.type == 'ARMATURE':
+			row = col.row(align=False)
+			row.label(text = f".minfo Magic Number:", icon="SHADERFX")
+			row = col.row(align=False)
+			row.label(text = f"Only edit this if game's Magic Number has changed!", icon="ERROR")
+			row = col.row(align=False)
+			magic = armature.get("Magic", None)
+			
+			if magic != None:
+				if curr_game_magic > magic: row.alert = True # Highlight if model's version is older
+				row.prop(armature, '["Magic"]', text="")
+			else:
+				row.alert = True
+				row.operator("armature.add_magic_number")
+			row = col.row(align=False) ; row.scale_y = 0.75
+			row.label(text = f"Game's current .minfo magic: {curr_game_magic}", icon="INFO")
+			
+
+
 class GBFRToolPanel_Credits(bpy.types.Panel):
 	global PCOLL
 	bl_label = "Credits"
@@ -200,6 +238,31 @@ class ButtonAddMaterialIndex(bpy.types.Operator):
 			raise Exception(f"{err}")
 		return {'FINISHED'}
 
+class ButtonAddMagicNumber(bpy.types.Operator):
+	bl_idname = "armature.add_magic_number"
+	bl_label = "Add Magic Number"
+	bl_description = "Add GBFR's Magic file number to the model"
+	bl_options = {'REGISTER', 'UNDO'}
+
+	@classmethod
+	def poll(cls, context):
+		return (context.active_object is not None)
+
+	def execute(self, context):
+		try:
+			obj = context.object
+			if obj.type != 'ARMATURE':
+				if obj.parent.type == 'ARMATURE': obj = obj.parent
+			if obj.type == 'ARMATURE':
+				magic = utils_get_magic()
+				obj["Magic"] = magic
+				# Set up property
+				obj.id_properties_ensure() # ensure manager is updated
+				prop_manager = obj.id_properties_ui("Magic")
+				prop_manager.update(min=0, max=100000000, default = magic)
+		except Exception as err:
+			raise Exception(f"{err}")
+		return {'FINISHED'}
 
 
 class ButtonSplitMeshAlongUVs(bpy.types.Operator):
@@ -216,7 +279,6 @@ class ButtonSplitMeshAlongUVs(bpy.types.Operator):
 	def execute(self, context):
 		try:
 			self.report({'INFO'}, f"Mesh(es) successfully split along UVs!")
-			utils_
 			split_faces_by_edge_seams(context.active_object)
 		except Exception as err:
 			print(f"{err}")
@@ -436,10 +498,10 @@ class ButtonGitHub(bpy.types.Operator):
 	
 
 
-classes = [GBFRToolPanel_Fixes, GBFRToolPanel_Utilities, GBFRToolPanel_Materials, GBFRToolPanel_Credits,
+classes = [GBFRToolPanel_Fixes, GBFRToolPanel_Utilities, GBFRToolPanel_Materials, GBFRToolPanel_Advanced, GBFRToolPanel_Credits,
 			ButtonSplitMeshAlongUVs, ButtonTranslateBonesToGBFR, ButtonTranslateBonesToUnityBlender, 
 			ButtonSeparateByMaterial, ButtonSortMaterials, ButtonJoinAllMeshes, ButtonSelect0WeightVertices, 
-			ButtonLimitAndNormalizeAllWeights, ButtonDeleteLooseGeometry, ButtonAddMaterialIndex,
+			ButtonLimitAndNormalizeAllWeights, ButtonDeleteLooseGeometry, ButtonAddMaterialIndex, ButtonAddMagicNumber,
 			ButtonDiscord, ButtonWebsite, ButtonGitHub
 			]
 

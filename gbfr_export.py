@@ -90,11 +90,6 @@ def write_some_data(context, filepath, export_scale):
 		#================================
 
 		obj.select_set(True) # Select mesh object
-		
-		# ensure the armature is not hidden so that the bpy.ops can effect it
-		if armature.hide_get() == True:
-			armature.hide_set(False)
-		
 		armature.select_set(True) # Select armature
 		bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) #Apply all transforms
 		armature.rotation_euler = (-1.5707963705062866,0,0) #Rotate back 90 to Y up
@@ -228,7 +223,7 @@ def write_some_data(context, filepath, export_scale):
 			for elm in vert[1]:
 				f.write(elm)
 		
-		section_length_table.append({'Offset': 0, 'Size': f.tell()})
+		section_length_table.append({'offset': 0, 'size': f.tell()})
 
 		DeformJointsTable = []
 
@@ -382,14 +377,14 @@ def write_some_data(context, filepath, export_scale):
 			for id in weight_id_table:
 				f.write(id)
 
-			section_length_table.append({'Offset': weight_id_start, 'Size': f.tell() - weight_id_start})
+			section_length_table.append({'offset': weight_id_start, 'size': f.tell() - weight_id_start})
 			
 			weight_start = f.tell()
 			
 			for weight in weight_table:
 				f.write(weight)
 			
-			section_length_table.append({'Offset': weight_start, 'Size': f.tell() - weight_start})        
+			section_length_table.append({'offset': weight_start, 'size': f.tell() - weight_start})        
 
 
 		# Build  faces
@@ -416,7 +411,7 @@ def write_some_data(context, filepath, export_scale):
 		# 	f.write(struct.pack('<III', face.verts[0].index, face.verts[1].index, face.verts[2].index))
 		# 	face_count += 3
 
-		section_length_table.append({'Offset': face_start, 'Size': f.tell() - face_start})     
+		section_length_table.append({'offset': face_start, 'size': f.tell() - face_start})     
 
 		f.close() # Close mmesh
 		# bm.free() # Free bmesh
@@ -444,7 +439,7 @@ def write_some_data(context, filepath, export_scale):
 					+ "Please select the mesh and use the GBFR Tool Shelf Panel in the 3D view to assign one and set it to a non-negative number.\n"
 					+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
 				)
-			if material["MaterialID"] < 0:
+			if material['MaterialID'] < 0:
 				raise UserWarning(
 					format_exception(f"Material Index '{material['MaterialID']}' on {material.name} is invalid.\n"
 					+ "Please select the mesh and set it to a non-negative number in the GBFR Tool shelf panel.\n"
@@ -466,7 +461,7 @@ def write_some_data(context, filepath, export_scale):
 			# print(f"sub_mesh_id: {sub_mesh_id}")
 
 			# Get material index
-			chunk = material["MaterialID"]
+			chunk = material['MaterialID']
 			
 			chunk_start = -1
 			chunk_end = -1
@@ -481,32 +476,32 @@ def write_some_data(context, filepath, export_scale):
 				face_mat_index = face.material_index
 				if chunk_name not in chunk_bounds:
 					chunk_bounds[chunk_name] = { #Initialize chunk bounds at infinity
-						"Min": {"x": float('inf'), "y": float('inf'), "z": float('inf')},
-						"Max": {"x": float('-inf'), "y": float('-inf'), "z": float('-inf')}
+						'min': {'x': float('inf'), 'y': float('inf'), 'z': float('inf')},
+						'max': {'x': float('-inf'), 'y': float('-inf'), 'z': float('-inf')}
 					}
 				for vert_index in face.vertices: #Calculate bounds
 					vert_co = mesh.vertices[vert_index].co
-					chunk_bounds[chunk_name]["Min"]["x"] = min(chunk_bounds[chunk_name]["Min"]["x"], vert_co.x)
-					chunk_bounds[chunk_name]["Min"]["y"] = min(chunk_bounds[chunk_name]["Min"]["y"], vert_co.y)
-					chunk_bounds[chunk_name]["Min"]["z"] = min(chunk_bounds[chunk_name]["Min"]["z"], vert_co.z)
-					chunk_bounds[chunk_name]["Max"]["x"] = max(chunk_bounds[chunk_name]["Max"]["x"], vert_co.x)
-					chunk_bounds[chunk_name]["Max"]["y"] = max(chunk_bounds[chunk_name]["Max"]["y"], vert_co.y)
-					chunk_bounds[chunk_name]["Max"]["z"] = max(chunk_bounds[chunk_name]["Max"]["z"], vert_co.z)
+					chunk_bounds[chunk_name]['min']['x'] = min(chunk_bounds[chunk_name]['min']['x'], vert_co.x)
+					chunk_bounds[chunk_name]['min']['y'] = min(chunk_bounds[chunk_name]['min']['y'], vert_co.y)
+					chunk_bounds[chunk_name]['min']['z'] = min(chunk_bounds[chunk_name]['min']['z'], vert_co.z)
+					chunk_bounds[chunk_name]['max']['x'] = max(chunk_bounds[chunk_name]['max']['x'], vert_co.x)
+					chunk_bounds[chunk_name]['max']['y'] = max(chunk_bounds[chunk_name]['max']['y'], vert_co.y)
+					chunk_bounds[chunk_name]['max']['z'] = max(chunk_bounds[chunk_name]['max']['z'], vert_co.z)
 
 			if i == len(mesh.materials) - 1:
 				chunk_end += 3
-			chunk_table.append({'Offset': chunk_start, 'Count': chunk_end - chunk_start, 'SubMeshID': sub_mesh_id, 'MaterialID': int(chunk), 'Unk1': 0, 'Unk2': 0})
+			chunk_table.append({'offset': chunk_start, 'count': chunk_end - chunk_start, 'sub_mesh_id': sub_mesh_id, 'material_id': int(chunk), 'a5': 0, 'a6': 0})
 			
 		# Construct and append sub mesh to sub meshes table
 		for chunk_name in sub_mesh_list:
 			sub_mesh_dict = {}
-			sub_mesh_dict["Name"] = chunk_name
-			sub_mesh_dict["BBox"] = {"Min": chunk_bounds[chunk_name]["Min"], "Max": chunk_bounds[chunk_name]["Max"]}
+			sub_mesh_dict['name'] = chunk_name
+			sub_mesh_dict['bbox'] = {'min': chunk_bounds[chunk_name]['min'], 'max': chunk_bounds[chunk_name]['max']}
 			sub_meshes_table.append(sub_mesh_dict)
 
 		pprint(sub_meshes_table)
 
-		jobj = {'MeshBuffers': section_length_table, 'Chunks': chunk_table, 'VertCount': vert_count, 'PolyCountX3': face_count, 'BufferTypes': 11, 'SubMeshes': sub_meshes_table, 'BonesToWeightIndices': DeformJointsTable}
+		jobj = {'mesh_buffers': section_length_table, 'chunks': chunk_table, 'vertex_count': vert_count, 'poly_count_x3': face_count, 'buffer_types': 11, 'sub_meshes': sub_meshes_table, 'bones_to_weight_indices': DeformJointsTable}
 		
 		j.write(json.dumps(jobj, indent=2))
 		j.close()
@@ -514,10 +509,10 @@ def write_some_data(context, filepath, export_scale):
 		fix_normals(obj)
 
 		# minfo_fbs_path = os.path.join(os.path.dirname(flatc_file_path),"MInfo_ModelInfo.fbs")
-
+		magic = armature.get("Magic", utils_get_magic()) # Get model's magic number
 		# Run the MInfo_Converter here
 		importlib.reload(MInfo_Converter) # RELOAD THE SCRIPT WHY ARE YOU SO BAD AT THIS BLENDER?????!!!!!
-		MInfo_Converter.convert_minfo(flatc_file_path, minfo_path, json_path)
+		MInfo_Converter.convert_minfo(flatc_file_path, minfo_path, json_path, magic)
 		return {'FINISHED'}
 	except Exception as err:
 		raise #Exception(err)

@@ -1,9 +1,29 @@
 import bpy
+import urllib
 import difflib # For bone tranlations
+
 
 def format_exception(exception_string): # raise_noob_readable_exception
 	# Prints a much more noticable exception for people to read.
 	return f"\n\n==============================\n!!!HEY YOU, READ THIS!!!\n==============================\n{exception_string}"
+
+def utils_get_magic():
+	magic = 20240213 # Default Hard coded value
+	try: # Get latest magic # from github
+		url = "https://raw.githubusercontent.com/WistfulHopes/GBFRBlenderTools/main/magic.txt"
+		res = urllib.request.urlopen(url)
+		print(f"fetch magic res status: {res.status}")
+		if res.status == 200: # OK
+			data = res.read()
+			print(f"magic res data returned: {data}")
+			number = int(data.decode('utf-8').strip())
+			if number > magic: # If the fetched number is newer, use it
+				magic = number
+	except Exception as err:
+		print(f"Error: {str(err)}")
+		pass
+
+	return magic
 
 def utils_set_mode(mode):
 	if bpy.ops.object.mode_set.poll():
