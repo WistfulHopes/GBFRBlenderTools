@@ -1,4 +1,5 @@
 import bpy
+import bpy.utils.previews # Funny blender at it again acting weird for some by not importing this despite bpy being imported :)))))))))))))))))))))
 import os
 import webbrowser
 import urllib.request
