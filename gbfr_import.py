@@ -200,7 +200,12 @@ def read_some_data(context, filepath, import_scale):
 	del f
 	
 	mesh1 = bpy.data.meshes.new("Mesh") # Create mesh data
-	mesh1.use_auto_smooth = True
+	
+	# Blender 4.1+ can handle custom split normals and sharp edges well,
+	# it is just fine to ignore the shade smooth setting.
+	if bpy.app.version < (4, 1, 0):
+		mesh1.use_auto_smooth = True
+	
 	obj = bpy.data.objects.new(f"{model_name}_Mesh",mesh1) # Create mesh object with model name
 	CurCollection.objects.link(obj)
 	utils_select_active(obj)
@@ -306,7 +311,16 @@ def read_some_data(context, filepath, import_scale):
 	bpy.ops.mesh.select_all(action='SELECT')
 	bpy.ops.mesh.flip_normals()
 	utils_set_mode('OBJECT')
-
+	
+	# There is no need to do this, just a reference for auto smooth.
+	# (Should be deleted.)
+	#if bpy.app.version >= (4, 1, 0):
+	#	bpy.ops.object.modifier_add_node_group(
+	#		asset_library_type='ESSENTIALS',
+	#		asset_library_identifier="",
+	#		relative_asset_identifier="geometry_nodes\\smooth_by_angle.blend\\NodeTree\\Smooth by Angle"
+	#	)
+	
 	if armature is not None:
 		armature.select_set(True) # Select the armature
 		armature.display_type = 'WIRE'
