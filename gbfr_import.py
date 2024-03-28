@@ -148,12 +148,16 @@ def read_some_data(context, filepath, import_scale):
 	FaceTable = []
 	
 	for n in range(vert_count):
-		VertTable.append(struct.unpack('<fff', f.read(4*3)))
+		vBuffer = struct.unpack('<fff', f.read(4*3))
+		vBuffer = (vBuffer[0], vBuffer[1], vBuffer[2])
+		VertTable.append(vBuffer)
 		normal = struct.unpack('<eee', f.read(2*3))
-		normal = (-normal[0], -normal[1], -normal[2])
+		normal = (normal[0], normal[1], normal[2])
 		NormalTable.append(normal)
 		f.seek(2,1)
-		TangentTable.append(struct.unpack('<eee', f.read(2*3)))
+		tangent = struct.unpack('<eee', f.read(2*3))
+		tangent = (tangent[0], tangent[2], tangent[1])
+		TangentTable.append(tangent)
 		f.seek(2,1)
 		UVTable.append(struct.unpack('<ee', f.read(2*2)))
 	print(f"len(VertTable) = {len(VertTable)}")
@@ -193,14 +197,16 @@ def read_some_data(context, filepath, import_scale):
 	
 	f.seek(LOD.MeshBuffers(LOD.MeshBuffersLength() - 1).Offset())
 	for n in range(face_count):
-		FaceTable.append(struct.unpack('<III', f.read(4*3)))
+		face = struct.unpack('<III', f.read(4*3))
+		face = (face[2], face[1], face[0])
+		FaceTable.append(face)
 	print(f"len(FaceTable) = {len(FaceTable)}")
 		
 	f.close()
 	del f
 	
 	mesh1 = bpy.data.meshes.new("Mesh") # Create mesh data
-	mesh1.use_auto_smooth = True
+	if bpy.app.version < (4, 1, 0): mesh1.use_auto_smooth = True
 	obj = bpy.data.objects.new(f"{model_name}_Mesh",mesh1) # Create mesh object with model name
 	CurCollection.objects.link(obj)
 	utils_select_active(obj)
@@ -304,7 +310,7 @@ def read_some_data(context, filepath, import_scale):
 	obj.select_set(True)
 	utils_set_mode('EDIT')
 	bpy.ops.mesh.select_all(action='SELECT')
-	bpy.ops.mesh.flip_normals()
+	# bpy.ops.mesh.flip_normals()
 	utils_set_mode('OBJECT')
 
 	if armature is not None:
