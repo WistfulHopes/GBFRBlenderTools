@@ -252,19 +252,28 @@ def read_some_data(context, filepath, import_scale):
 	if NormalTable != []:
 		mesh1.normals_split_custom_set(Normals)
 
-	if armature is not None:
+	# Assign vertices to their respective Vertex Groups
+	if armature is not None: 
 		for v in range(vert_count):
 			for n in range(4):
-				group_name = armature.data.bones[WeightIndicesTable[v][n]].name
-				if obj.vertex_groups.find(group_name) == -1:
-					TempVG = obj.vertex_groups.new(name = group_name)
-				else:
-					TempVG = obj.vertex_groups[obj.vertex_groups.find(group_name)]
-				
-				TempVG.add([v], float(WeightTable[v][n]) / 65535, 'ADD')
+				try:
+					# Uses the WeightsIndicesTable to find the names of vertex groups.
+					group_name = armature.data.bones[WeightIndicesTable[v][n]].name
+					# See if a vertex group of that name exists on the mesh or not, add one if not
+					if obj.vertex_groups.find(group_name) == -1:
+						TempVG = obj.vertex_groups.new(name = group_name)
+					else:
+						TempVG = obj.vertex_groups[obj.vertex_groups.find(group_name)]
+					# Take the vertex group and add the vertices with their respective weights to it.
+					TempVG.add([v], float(WeightTable[v][n]) / 65535, 'ADD')
+				except Exception as err:
+					# print(err)
+					pass
+					# I don't know why a model would have out of range vertex group names, but ones like fp0000 do, with bone index 99 being out of range.
+					# So maybe there's bones that should be there but aren't.
+					# So until a better way is discovered, we just pass on this so the import doesn't fail. This doesn't seem to cause any model issues.
 	
 	mat_counter = 0
-	
 	for i in range(mesh_info.SubMeshesLength()):
 		sub_mesh = mesh_info.SubMeshes(i)
 		for j in range(LOD.ChunksLength()):
