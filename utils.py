@@ -8,20 +8,20 @@ def format_exception(exception_string): # raise_noob_readable_exception
 	return f"\n\n==============================\n!!!HEY YOU, READ THIS!!!\n==============================\n{exception_string}"
 
 def utils_get_magic():
-	magic = 20240213 # Default Hard coded value
-	try: # Get latest magic # from github
-		url = "https://raw.githubusercontent.com/WistfulHopes/GBFRBlenderTools/main/magic.txt"
-		res = urllib.request.urlopen(url)
-		print(f"fetch magic res status: {res.status}")
-		if res.status == 200: # OK
-			data = res.read()
-			print(f"magic res data returned: {data}")
-			number = int(data.decode('utf-8').strip())
-			if number > magic: # If the fetched number is newer, use it
-				magic = number
-	except Exception as err:
-		print(f"Error: {str(err)}")
-		pass
+	magic = 100000101 # Default Hard coded value
+	# try: # Get latest magic # from github
+	# 	url = "https://raw.githubusercontent.com/WistfulHopes/GBFRBlenderTools/main/magic.txt"
+	# 	res = urllib.request.urlopen(url)
+	# 	print(f"fetch magic res status: {res.status}")
+	# 	if res.status == 200: # OK
+	# 		data = res.read()
+	# 		print(f"magic res data returned: {data}")
+	# 		number = int(data.decode('utf-8').strip())
+	# 		if number > magic: # If the fetched number is newer, use it
+	# 			magic = number
+	# except Exception as err:
+	# 	print(f"Error: {str(err)}")
+	# 	pass
 
 	return magic
 
@@ -191,14 +191,14 @@ def utils_separate_by_materials(context):
 # then by reverse numberically of the next 2 characters, then lastly by .# index at the end
 def utils_reorder_materials(context):
 	mesh_name = context.active_object.name
-	armature = context.active_object.find_armature()
 
-	if "material_order" in armature:
-		material_order = armature["material_order"]
-	else:
-		raise UserWarning(
-			format_exception("No imported material order stored for this model, unable to sort.")
-		)
+	# armature = context.active_object.find_armature()
+	# if "material_order" in armature:
+	# 	material_order = armature["material_order"]
+	# else:
+	# 	raise UserWarning(
+	# 		format_exception("No imported material order stored for this model, unable to sort.")
+	# 	)
 	
 
 	utils_separate_by_materials(context) #Separate by materials first to give the neshes their material names
@@ -273,9 +273,9 @@ def utils_select_0_weight_vertices(mesh):
 
 
 # Limit and Normalize all vertex weights
-def utils_limit_and_normalize_weights(mesh):
-	for vg in mesh.vertex_groups:
-		# limit total weights to 4
-		bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
-		# normalize all weights
-		bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL', lock_active=False)
+def utils_limit_and_normalize_weights(mesh, limit_number=8):
+	# for vg in mesh.vertex_groups: # <- Unnecessary
+	# limit total weight group assignments per vertex
+	bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=limit_number)
+	# normalize all weights
+	bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL', lock_active=False)

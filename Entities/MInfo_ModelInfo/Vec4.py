@@ -2,30 +2,33 @@
 
 # namespace: Entities
 
-from . import flatbuffers
-from .flatbuffers.compat import import_numpy
+from .. import flatbuffers
+from ..flatbuffers.compat import import_numpy
 np = import_numpy()
 
-class Vec3(object):
+class Vec4(object):
     __slots__ = ['_tab']
 
     @classmethod
     def SizeOf(cls):
-        return 12
+        return 16
 
-    # Vec3
+    # Vec4
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
-    # Vec3
+    # Vec4
     def X(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(0))
-    # Vec3
+    # Vec4
     def Y(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(4))
-    # Vec3
+    # Vec4
     def Z(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(8))
+    # Vec4
+    def R(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(12))
 
-def CreateVec3(builder, x, y, z):
-    builder.Prep(4, 12)
+def CreateVec4(builder, x, y, z, r):
+    builder.Prep(4, 16)
+    builder.PrependFloat32(r)
     builder.PrependFloat32(z)
     builder.PrependFloat32(y)
     builder.PrependFloat32(x)

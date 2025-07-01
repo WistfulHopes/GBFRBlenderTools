@@ -2,7 +2,7 @@
 
 # namespace: Entities
 
-from .flatbuffers import *
+from . import flatbuffers
 from .flatbuffers.compat import import_numpy
 np = import_numpy()
 
@@ -15,16 +15,16 @@ class Vec4(object):
 
     # Vec4
     def Init(self, buf, pos):
-        self._tab = table.Table(buf, pos)
+        self._tab = flatbuffers.table.Table(buf, pos)
 
     # Vec4
-    def X(self): return self._tab.Get(number_types.Float32Flags, self._tab.Pos + number_types.UOffsetTFlags.py_type(0))
+    def X(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(0))
     # Vec4
-    def Y(self): return self._tab.Get(number_types.Float32Flags, self._tab.Pos + number_types.UOffsetTFlags.py_type(4))
+    def Y(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(4))
     # Vec4
-    def Z(self): return self._tab.Get(number_types.Float32Flags, self._tab.Pos + number_types.UOffsetTFlags.py_type(8))
+    def Z(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(8))
     # Vec4
-    def R(self): return self._tab.Get(number_types.Float32Flags, self._tab.Pos + number_types.UOffsetTFlags.py_type(12))
+    def R(self): return self._tab.Get(flatbuffers.number_types.Float32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(12))
 
 def CreateVec4(builder, x, y, z, r):
     builder.Prep(4, 16)

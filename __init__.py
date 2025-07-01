@@ -22,15 +22,15 @@ if "bpy" in locals():
         importlib.reload(gbfr_panel)
     if "utils" in locals():
         importlib.reload(utils)
+    if "gbfr_minfo_builder" in locals():
+        importlib.reload(gbfr_minfo_builder)
 
 import bpy
 import bmesh
 import mathutils
 import struct
 import os
-from . import gbfr_import, gbfr_export, gbfr_panel, utils
-from .Entities.ModelInfo import ModelInfo
-# from .Entities.ModelSkeleton import ModelSkeleton
+from . import gbfr_import, gbfr_export, gbfr_panel, utils, gbfr_minfo_builder
 
 # ImportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
