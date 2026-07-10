@@ -32,7 +32,7 @@ class MaterialInfo(object):
         return 0
 
     # MaterialInfo
-    def UnkFlags(self):
+    def MaterialFlags(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int8Flags, o + self._tab.Pos)
@@ -50,11 +50,11 @@ def MaterialInfoAddUniqueNameHash(builder, uniqueNameHash):
 def AddUniqueNameHash(builder, uniqueNameHash):
     MaterialInfoAddUniqueNameHash(builder, uniqueNameHash)
 
-def MaterialInfoAddUnkFlags(builder, unkFlags):
-    builder.PrependInt8Slot(1, unkFlags, 0)
+def MaterialInfoAddMaterialFlags(builder, materialFlags):
+    builder.PrependInt8Slot(1, materialFlags, 0)
 
-def AddUnkFlags(builder, unkFlags):
-    MaterialInfoAddUnkFlags(builder, unkFlags)
+def AddMaterialFlags(builder, materialFlags):
+    MaterialInfoAddMaterialFlags(builder, materialFlags)
 
 def MaterialInfoEnd(builder):
     return builder.EndObject()

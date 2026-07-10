@@ -82,7 +82,7 @@ class ModelInfo(object):
         return o == 0
 
     # ModelInfo
-    def A4(self, j):
+    def LodScreenSizeThresholds(self, j):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             a = self._tab.Vector(o)
@@ -90,21 +90,21 @@ class ModelInfo(object):
         return 0
 
     # ModelInfo
-    def A4AsNumpy(self):
+    def LodScreenSizeThresholdsAsNumpy(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             return self._tab.GetVectorAsNumpy(flatbuffers.number_types.Float32Flags, o)
         return 0
 
     # ModelInfo
-    def A4Length(self):
+    def LodScreenSizeThresholdsLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             return self._tab.VectorLen(o)
         return 0
 
     # ModelInfo
-    def A4IsNone(self):
+    def LodScreenSizeThresholdsIsNone(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         return o == 0
 
@@ -159,7 +159,7 @@ class ModelInfo(object):
         return o == 0
 
     # ModelInfo
-    def BonesToWeightIndices(self, j):
+    def DeformBoneToBoneIndexTable(self, j):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         if o != 0:
             a = self._tab.Vector(o)
@@ -167,21 +167,21 @@ class ModelInfo(object):
         return 0
 
     # ModelInfo
-    def BonesToWeightIndicesAsNumpy(self):
+    def DeformBoneToBoneIndexTableAsNumpy(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         if o != 0:
             return self._tab.GetVectorAsNumpy(flatbuffers.number_types.Uint16Flags, o)
         return 0
 
     # ModelInfo
-    def BonesToWeightIndicesLength(self):
+    def DeformBoneToBoneIndexTableLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         if o != 0:
             return self._tab.VectorLen(o)
         return 0
 
     # ModelInfo
-    def BonesToWeightIndicesIsNone(self):
+    def DeformBoneToBoneIndexTableIsNone(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         return o == 0
 
@@ -210,12 +210,12 @@ class ModelInfo(object):
         return o == 0
 
     # ModelInfo
-    def Vec39(self):
+    def BoundingSphere(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(20))
         if o != 0:
             x = o + self._tab.Pos
-            from .Vec3 import Vec3
-            obj = Vec3()
+            from .Vec4 import Vec4
+            obj = Vec4()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
@@ -243,14 +243,14 @@ class ModelInfo(object):
         return None
 
     # ModelInfo
-    def F12(self):
+    def NearCameraBoundRadius(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(26))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
         return 0.0
 
     # ModelInfo
-    def F13(self):
+    def NearCameraDetectionScale(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(28))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
@@ -313,14 +313,14 @@ class ModelInfo(object):
         return 0
 
     # ModelInfo
-    def Byte22(self):
+    def SceneGraphMode(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(46))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int8Flags, o + self._tab.Pos)
         return 0
 
     # ModelInfo
-    def Bool23(self):
+    def UseSceneGraphCache(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(48))
         if o != 0:
             return bool(self._tab.Get(flatbuffers.number_types.BoolFlags, o + self._tab.Pos))
@@ -348,7 +348,7 @@ class ModelInfo(object):
         return False
 
     # ModelInfo
-    def Bool27(self):
+    def UseBoneBoundsForFade(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(56))
         if o != 0:
             return bool(self._tab.Get(flatbuffers.number_types.BoolFlags, o + self._tab.Pos))
@@ -369,7 +369,7 @@ class ModelInfo(object):
         return False
 
     # ModelInfo
-    def Bool30(self):
+    def ForceNearFadeEvaluation(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(62))
         if o != 0:
             return bool(self._tab.Get(flatbuffers.number_types.BoolFlags, o + self._tab.Pos))
@@ -379,25 +379,25 @@ class ModelInfo(object):
     def Bool31(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(64))
         if o != 0:
-            return bool(self._tab.Get(flatbuffers.number_types.BoolFlags, o + self._tab.Pos))
-        return False
+            return self._tab.Get(flatbuffers.number_types.Int8Flags, o + self._tab.Pos)
+        return 0
 
     # ModelInfo
-    def Bool32(self):
+    def UseMeshAabbForFade(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(66))
         if o != 0:
             return bool(self._tab.Get(flatbuffers.number_types.BoolFlags, o + self._tab.Pos))
         return False
 
     # ModelInfo
-    def Bool33(self):
+    def RenderFlags(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(68))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int8Flags, o + self._tab.Pos)
         return 0
 
     # ModelInfo
-    def Float34(self):
+    def CameraNearFadeAabbRadius(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(70))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
@@ -439,17 +439,17 @@ def ModelInfoStartShadowLodsVector(builder, numElems):
 def StartShadowLodsVector(builder, numElems):
     return ModelInfoStartShadowLodsVector(builder, numElems)
 
-def ModelInfoAddA4(builder, a4):
-    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(a4), 0)
+def ModelInfoAddLodScreenSizeThresholds(builder, lodScreenSizeThresholds):
+    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(lodScreenSizeThresholds), 0)
 
-def AddA4(builder, a4):
-    ModelInfoAddA4(builder, a4)
+def AddLodScreenSizeThresholds(builder, lodScreenSizeThresholds):
+    ModelInfoAddLodScreenSizeThresholds(builder, lodScreenSizeThresholds)
 
-def ModelInfoStartA4Vector(builder, numElems):
+def ModelInfoStartLodScreenSizeThresholdsVector(builder, numElems):
     return builder.StartVector(4, numElems, 4)
 
-def StartA4Vector(builder, numElems):
-    return ModelInfoStartA4Vector(builder, numElems)
+def StartLodScreenSizeThresholdsVector(builder, numElems):
+    return ModelInfoStartLodScreenSizeThresholdsVector(builder, numElems)
 
 def ModelInfoAddMeshes(builder, meshes):
     builder.PrependUOffsetTRelativeSlot(4, flatbuffers.number_types.UOffsetTFlags.py_type(meshes), 0)
@@ -475,17 +475,17 @@ def ModelInfoStartMaterialsVector(builder, numElems):
 def StartMaterialsVector(builder, numElems):
     return ModelInfoStartMaterialsVector(builder, numElems)
 
-def ModelInfoAddBonesToWeightIndices(builder, bonesToWeightIndices):
-    builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(bonesToWeightIndices), 0)
+def ModelInfoAddDeformBoneToBoneIndexTable(builder, deformBoneToBoneIndexTable):
+    builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(deformBoneToBoneIndexTable), 0)
 
-def AddBonesToWeightIndices(builder, bonesToWeightIndices):
-    ModelInfoAddBonesToWeightIndices(builder, bonesToWeightIndices)
+def AddDeformBoneToBoneIndexTable(builder, deformBoneToBoneIndexTable):
+    ModelInfoAddDeformBoneToBoneIndexTable(builder, deformBoneToBoneIndexTable)
 
-def ModelInfoStartBonesToWeightIndicesVector(builder, numElems):
+def ModelInfoStartDeformBoneToBoneIndexTableVector(builder, numElems):
     return builder.StartVector(2, numElems, 2)
 
-def StartBonesToWeightIndicesVector(builder, numElems):
-    return ModelInfoStartBonesToWeightIndicesVector(builder, numElems)
+def StartDeformBoneToBoneIndexTableVector(builder, numElems):
+    return ModelInfoStartDeformBoneToBoneIndexTableVector(builder, numElems)
 
 def ModelInfoAddDeformBoneBoundaryBox(builder, deformBoneBoundaryBox):
     builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(deformBoneBoundaryBox), 0)
@@ -499,11 +499,11 @@ def ModelInfoStartDeformBoneBoundaryBoxVector(builder, numElems):
 def StartDeformBoneBoundaryBoxVector(builder, numElems):
     return ModelInfoStartDeformBoneBoundaryBoxVector(builder, numElems)
 
-def ModelInfoAddVec39(builder, vec39):
-    builder.PrependStructSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(vec39), 0)
+def ModelInfoAddBoundingSphere(builder, boundingSphere):
+    builder.PrependStructSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(boundingSphere), 0)
 
-def AddVec39(builder, vec39):
-    ModelInfoAddVec39(builder, vec39)
+def AddBoundingSphere(builder, boundingSphere):
+    ModelInfoAddBoundingSphere(builder, boundingSphere)
 
 def ModelInfoAddBgReactionData(builder, bgReactionData):
     builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(bgReactionData), 0)
@@ -517,17 +517,17 @@ def ModelInfoAddVec311(builder, vec311):
 def AddVec311(builder, vec311):
     ModelInfoAddVec311(builder, vec311)
 
-def ModelInfoAddF12(builder, f12):
-    builder.PrependFloat32Slot(11, f12, 0.0)
+def ModelInfoAddNearCameraBoundRadius(builder, nearCameraBoundRadius):
+    builder.PrependFloat32Slot(11, nearCameraBoundRadius, 0.0)
 
-def AddF12(builder, f12):
-    ModelInfoAddF12(builder, f12)
+def AddNearCameraBoundRadius(builder, nearCameraBoundRadius):
+    ModelInfoAddNearCameraBoundRadius(builder, nearCameraBoundRadius)
 
-def ModelInfoAddF13(builder, f13):
-    builder.PrependFloat32Slot(12, f13, 0.0)
+def ModelInfoAddNearCameraDetectionScale(builder, nearCameraDetectionScale):
+    builder.PrependFloat32Slot(12, nearCameraDetectionScale, 0.0)
 
-def AddF13(builder, f13):
-    ModelInfoAddF13(builder, f13)
+def AddNearCameraDetectionScale(builder, nearCameraDetectionScale):
+    ModelInfoAddNearCameraDetectionScale(builder, nearCameraDetectionScale)
 
 def ModelInfoAddFadeOutDistance(builder, fadeOutDistance):
     builder.PrependFloat32Slot(13, fadeOutDistance, 0.0)
@@ -577,17 +577,17 @@ def ModelInfoAddByte21(builder, byte21):
 def AddByte21(builder, byte21):
     ModelInfoAddByte21(builder, byte21)
 
-def ModelInfoAddByte22(builder, byte22):
-    builder.PrependInt8Slot(21, byte22, 0)
+def ModelInfoAddSceneGraphMode(builder, sceneGraphMode):
+    builder.PrependInt8Slot(21, sceneGraphMode, 0)
 
-def AddByte22(builder, byte22):
-    ModelInfoAddByte22(builder, byte22)
+def AddSceneGraphMode(builder, sceneGraphMode):
+    ModelInfoAddSceneGraphMode(builder, sceneGraphMode)
 
-def ModelInfoAddBool23(builder, bool23):
-    builder.PrependBoolSlot(22, bool23, 0)
+def ModelInfoAddUseSceneGraphCache(builder, useSceneGraphCache):
+    builder.PrependBoolSlot(22, useSceneGraphCache, 0)
 
-def AddBool23(builder, bool23):
-    ModelInfoAddBool23(builder, bool23)
+def AddUseSceneGraphCache(builder, useSceneGraphCache):
+    ModelInfoAddUseSceneGraphCache(builder, useSceneGraphCache)
 
 def ModelInfoAddBool24(builder, bool24):
     builder.PrependBoolSlot(23, bool24, 0)
@@ -607,11 +607,11 @@ def ModelInfoAddBool26(builder, bool26):
 def AddBool26(builder, bool26):
     ModelInfoAddBool26(builder, bool26)
 
-def ModelInfoAddBool27(builder, bool27):
-    builder.PrependBoolSlot(26, bool27, 0)
+def ModelInfoAddUseBoneBoundsForFade(builder, useBoneBoundsForFade):
+    builder.PrependBoolSlot(26, useBoneBoundsForFade, 0)
 
-def AddBool27(builder, bool27):
-    ModelInfoAddBool27(builder, bool27)
+def AddUseBoneBoundsForFade(builder, useBoneBoundsForFade):
+    ModelInfoAddUseBoneBoundsForFade(builder, useBoneBoundsForFade)
 
 def ModelInfoAddBool28(builder, bool28):
     builder.PrependBoolSlot(27, bool28, 0)
@@ -625,35 +625,35 @@ def ModelInfoAddBool29(builder, bool29):
 def AddBool29(builder, bool29):
     ModelInfoAddBool29(builder, bool29)
 
-def ModelInfoAddBool30(builder, bool30):
-    builder.PrependBoolSlot(29, bool30, 0)
+def ModelInfoAddForceNearFadeEvaluation(builder, forceNearFadeEvaluation):
+    builder.PrependBoolSlot(29, forceNearFadeEvaluation, 0)
 
-def AddBool30(builder, bool30):
-    ModelInfoAddBool30(builder, bool30)
+def AddForceNearFadeEvaluation(builder, forceNearFadeEvaluation):
+    ModelInfoAddForceNearFadeEvaluation(builder, forceNearFadeEvaluation)
 
 def ModelInfoAddBool31(builder, bool31):
-    builder.PrependBoolSlot(30, bool31, 0)
+    builder.PrependInt8Slot(30, bool31, 0)
 
 def AddBool31(builder, bool31):
     ModelInfoAddBool31(builder, bool31)
 
-def ModelInfoAddBool32(builder, bool32):
-    builder.PrependBoolSlot(31, bool32, 0)
+def ModelInfoAddUseMeshAabbForFade(builder, useMeshAabbForFade):
+    builder.PrependBoolSlot(31, useMeshAabbForFade, 0)
 
-def AddBool32(builder, bool32):
-    ModelInfoAddBool32(builder, bool32)
+def AddUseMeshAabbForFade(builder, useMeshAabbForFade):
+    ModelInfoAddUseMeshAabbForFade(builder, useMeshAabbForFade)
 
-def ModelInfoAddBool33(builder, bool33):
-    builder.PrependInt8Slot(32, bool33, 0)
+def ModelInfoAddRenderFlags(builder, renderFlags):
+    builder.PrependInt8Slot(32, renderFlags, 0)
 
-def AddBool33(builder, bool33):
-    ModelInfoAddBool33(builder, bool33)
+def AddRenderFlags(builder, renderFlags):
+    ModelInfoAddRenderFlags(builder, renderFlags)
 
-def ModelInfoAddFloat34(builder, float34):
-    builder.PrependFloat32Slot(33, float34, 0.0)
+def ModelInfoAddCameraNearFadeAabbRadius(builder, cameraNearFadeAabbRadius):
+    builder.PrependFloat32Slot(33, cameraNearFadeAabbRadius, 0.0)
 
-def AddFloat34(builder, float34):
-    ModelInfoAddFloat34(builder, float34)
+def AddCameraNearFadeAabbRadius(builder, cameraNearFadeAabbRadius):
+    ModelInfoAddCameraNearFadeAabbRadius(builder, cameraNearFadeAabbRadius)
 
 def ModelInfoEnd(builder):
     return builder.EndObject()

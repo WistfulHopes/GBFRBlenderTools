@@ -56,7 +56,7 @@ def build_stream_lod_table(builder:Builder, lod_data:dict):
 	StreamLOD.AddBuffers(builder, buffers_vector)
 	StreamLOD.AddChunks(builder, chunks_vector)
 	StreamLOD.AddVertexCount(builder, lod_data["vertex_count"])
-	StreamLOD.AddPolyCountX3(builder, lod_data["poly_count_x3"])
+	StreamLOD.AddIndexCount(builder, lod_data["index_count"])
 	StreamLOD.AddBufferTypes(builder, lod_data["buffer_types"])
 	StreamLOD.AddA6(builder,lod_data["a6"])
 	stream_lod_offset = StreamLOD.End(builder)
@@ -130,7 +130,7 @@ def build_material_info(builder:Builder, material_data:dict):
 	# Build Material info table
 	MaterialInfo.Start(builder)
 	MaterialInfo.AddUniqueNameHash(builder, material_data["unique_name_hash"])
-	MaterialInfo.AddUnkFlags(builder, material_data["unk_flags"])
+	MaterialInfo.AddMaterialFlags(builder, material_data["material_flags"])
 	material_info_offset = MaterialInfo.End(builder)
 	
 	return material_info_offset
@@ -196,11 +196,11 @@ def build_minfo(minfo_data:dict, filepath:str):
 	#3. Build shadow lods list
 	shadow_lods_vector = build_lods_list(minfo_builder, minfo_data["shadow_lods"])
 
-	#4. Build a4 float list (LOD distance parameters)
-	MInfo.StartA4Vector(minfo_builder, len(minfo_data["a4"]))
-	for a4_float in reversed(minfo_data["a4"]):
-		minfo_builder.PrependFloat32(a4_float)
-	a4_vector = minfo_builder.EndVector()
+	#4. Build LOD distance thresholds float list
+	MInfo.StartLodScreenSizeThresholdsVector(minfo_builder, len(minfo_data["lod_screen_size_thresholds"]))
+	for lod_threshold_float in reversed(minfo_data["lod_screen_size_thresholds"]):
+		minfo_builder.PrependFloat32(lod_threshold_float)
+	lod_thresholds_vector = minfo_builder.EndVector()
 
 	#5. Build Sub Meshes info List (Geometry separated by Materials)
 	meshes_vector = build_meshes_list(minfo_builder, minfo_data["meshes"])
@@ -210,10 +210,10 @@ def build_minfo(minfo_data:dict, filepath:str):
 	# materials_vector = build_vector(minfo_builder, builder_function_name = "build_material_info", vector_name="materials", list_data=minfo_data["materials"])
 
 	#7. Build Bones to Weight Indices list
-	MInfo.StartBonesToWeightIndicesVector(minfo_builder, len(minfo_data["bones_to_weight_indices"]))
-	for index_short in reversed(minfo_data["bones_to_weight_indices"]):
+	MInfo.StartDeformBoneToBoneIndexTableVector(minfo_builder, len(minfo_data["deform_bone_to_bone_index_table"]))
+	for index_short in reversed(minfo_data["deform_bone_to_bone_index_table"]):
 		minfo_builder.PrependUint16(index_short)
-	bones_to_weight_indices_vector = minfo_builder.EndVector()
+	deform_bone_to_bone_index_table_vector = minfo_builder.EndVector()
 
 	#8. Build Bone Deform Bounding Boxes list (remember to flip y and z, y is negative)
 	MInfo.StartDeformBoneBoundaryBoxVector(minfo_builder, len(minfo_data["deform_bone_boundary_box"]))
@@ -232,17 +232,24 @@ def build_minfo(minfo_data:dict, filepath:str):
 	MInfo.AddMagic(minfo_builder, magic)
 	MInfo.AddLods(minfo_builder, lods_vector)
 	MInfo.AddShadowLods(minfo_builder, shadow_lods_vector)
-	MInfo.AddA4(minfo_builder, a4_vector)
+	MInfo.AddLodScreenSizeThresholds(minfo_builder, lod_thresholds_vector)
 	MInfo.AddMeshes(minfo_builder, meshes_vector)
 	MInfo.AddMaterials(minfo_builder, materials_vector)
-	MInfo.AddBonesToWeightIndices(minfo_builder, bones_to_weight_indices_vector)
+	MInfo.AddDeformBoneToBoneIndexTable(minfo_builder, deform_bone_to_bone_index_table_vector)
 	MInfo.AddDeformBoneBoundaryBox(minfo_builder, deform_bone_boundary_box_vector)
-	MInfo.AddVec39(minfo_builder, Vec3.CreateVec3(minfo_builder, x=minfo_data["vec3_9"][0], y=minfo_data["vec3_9"][1], z=minfo_data["vec3_9"][2]))
+	MInfo.AddBoundingSphere(minfo_builder, Vec4.CreateVec4(minfo_builder, 
+											   x=minfo_data["bounding_sphere"][0], 
+											   y=minfo_data["bounding_sphere"][1], 
+											   z=minfo_data["bounding_sphere"][2], 
+											   r=minfo_data["bounding_sphere"][3]))
 	#if "bg_reaction_data" in minfo_data:
 	#  MInfo.AddBgReactionData(minfo_builder, )
-	MInfo.AddVec311(minfo_builder, Vec3.CreateVec3(minfo_builder, x=minfo_data["vec3_11"][0], y=minfo_data["vec3_11"][1], z=minfo_data["vec3_11"][2]))
-	MInfo.AddF12(minfo_builder, minfo_data["f12"])
-	MInfo.AddF13(minfo_builder, minfo_data["f13"])
+	MInfo.AddVec311(minfo_builder, Vec3.CreateVec3(minfo_builder, 
+												x=minfo_data["vec3_11"][0], 
+												y=minfo_data["vec3_11"][1],
+												z=minfo_data["vec3_11"][2]))
+	MInfo.AddNearCameraBoundRadius(minfo_builder, minfo_data["near_camera_bound_radius"])
+	MInfo.AddNearCameraDetectionScale(minfo_builder, minfo_data["near_camera_detection_scale"])
 	MInfo.AddFadeOutDistance(minfo_builder, minfo_data["fade_out_distance"])
 	if "f15" in minfo_data: 
 		MInfo.AddF15(minfo_builder, minfo_data["f15"])
@@ -251,31 +258,32 @@ def build_minfo(minfo_data:dict, filepath:str):
 	MInfo.AddF18(minfo_builder, minfo_data["f18"])
 	MInfo.AddF19(minfo_builder, minfo_data["f19"])
 	if "u20" in minfo_data: 
-		MInfo.AddU20(minfo_builder, minfo_data["u20"])
+		MInfo.AddU20(minfo_builder, int(minfo_data["u20"]) & 0xFFFFFFFF) # Ensure conversion to uint32
 	MInfo.AddByte21(minfo_builder, minfo_data["byte21"])
-	MInfo.AddByte22(minfo_builder, minfo_data["byte22"])
-	if "bool23" in minfo_data: 
-		MInfo.AddBool23(minfo_builder, minfo_data["bool23"])
+	if "scene_graph_mode" in minfo_data:
+		MInfo.AddSceneGraphMode(minfo_builder, minfo_data["scene_graph_mode"])
+	if "use_scene_graph_cache" in minfo_data: 
+		MInfo.AddUseSceneGraphCache(minfo_builder, minfo_data["use_scene_graph_cache"])
 	if "bool24" in minfo_data: 
 		MInfo.AddBool24(minfo_builder, minfo_data["bool24"])
 	if "is_ship" in minfo_data: 
 		MInfo.AddIsShip(minfo_builder, minfo_data["is_ship"])
 	MInfo.AddBool26(minfo_builder, minfo_data["bool26"])
-	MInfo.AddBool27(minfo_builder, minfo_data["bool27"])
+	MInfo.AddUseBoneBoundsForFade(minfo_builder, minfo_data["use_bone_bounds_for_fade"])
 	if "bool28" in minfo_data: 
 		MInfo.AddBool28(minfo_builder, minfo_data["bool28"])
 	if "bool29" in minfo_data: 
 		MInfo.AddBool29(minfo_builder, minfo_data["bool29"])
-	if "bool30" in minfo_data: 
-		MInfo.AddBool30(minfo_builder, minfo_data["bool30"])
+	if "force_near_fade_evaluation" in minfo_data: 
+		MInfo.AddForceNearFadeEvaluation(minfo_builder, minfo_data["force_near_fade_evaluation"])
 	if "bool31" in minfo_data: 
 		MInfo.AddBool31(minfo_builder, minfo_data["bool31"])
-	if "bool32" in minfo_data: 
-		MInfo.AddBool32(minfo_builder, minfo_data["bool32"])
-	if "bool33" in minfo_data: 
-		MInfo.AddBool33(minfo_builder, minfo_data["bool33"]) # - Is actually byte not bool, whoops :>
-	if "float34" in minfo_data: 
-		MInfo.AddFloat34(minfo_builder, minfo_data["float34"])
+	if "use_mesh_aabb_for_fade" in minfo_data: 
+		MInfo.AddUseMeshAabbForFade(minfo_builder, minfo_data["use_mesh_aabb_for_fade"])
+	if "render_flags" in minfo_data: 
+		MInfo.AddRenderFlags(minfo_builder, minfo_data["render_flags"])
+	if "camera_near_fade_aabb_radius" in minfo_data: 
+		MInfo.AddCameraNearFadeAabbRadius(minfo_builder, minfo_data["camera_near_fade_aabb_radius"])
 	
 	# Finish Table
 	minfo_table = MInfo.ModelInfoEnd(minfo_builder)

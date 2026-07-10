@@ -80,7 +80,7 @@ class StreamLOD(object):
         return 0
 
     # StreamLOD
-    def PolyCountX3(self):
+    def IndexCount(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
@@ -136,11 +136,11 @@ def StreamLODAddVertexCount(builder, vertexCount):
 def AddVertexCount(builder, vertexCount):
     StreamLODAddVertexCount(builder, vertexCount)
 
-def StreamLODAddPolyCountX3(builder, polyCountX3):
-    builder.PrependInt32Slot(3, polyCountX3, 0)
+def StreamLODAddIndexCount(builder, indexCount):
+    builder.PrependInt32Slot(3, indexCount, 0)
 
-def AddPolyCountX3(builder, polyCountX3):
-    StreamLODAddPolyCountX3(builder, polyCountX3)
+def AddIndexCount(builder, indexCount):
+    StreamLODAddIndexCount(builder, indexCount)
 
 def StreamLODAddBufferTypes(builder, bufferTypes):
     builder.PrependUint8Slot(4, bufferTypes, 0)

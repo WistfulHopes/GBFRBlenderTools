@@ -176,23 +176,34 @@ class GBFRToolPanel_Advanced(bpy.types.Panel):
 		box = layout.box()
 		col = box.column(align=True)
 		obj = context.object
-		if obj and obj.type != 'ARMATURE':
-			if obj.parent.type == 'ARMATURE':
+		if obj and (obj.type != 'ARMATURE' and obj.type != 'EMPTY'):
+			if obj.parent.type == 'ARMATURE' or obj.parent.type == 'EMPTY':
 				obj = obj.parent
-		armature = obj
-		if armature and armature.type == 'ARMATURE':
+		root_obj = obj
+		if root_obj.type == 'ARMATURE' or root_obj.type == 'EMPTY':
 			row = col.row(align=False)
 			row.label(text = f".minfo Magic Number:", icon="SHADERFX")
 			row = col.row(align=False)
-			magic = armature.get("magic", None)
+			magic = root_obj.get("magic", None)
 			
 			if magic != None:
 				# if curr_game_magic > magic: row.alert = True # Highlight if model's version is older
-				row.prop(armature, '["magic"]', text="")
+				row.prop(root_obj, '["magic"]', text="")
 			else:
 				row.alert = True
-				row.operator("armature.add_magic_number")
+				row.operator("root.add_magic_number")
 			row = col.row(align=False) ; row.scale_y = 0.75
+
+			row = col.row(align=False)
+			row.label(text = f"LOD Screen Sizes:", icon="MOD_DECIM")
+			row = col.row(align=False)
+			lod_screen_size_thresholds = root_obj.get("lod_screen_size_thresholds", None);
+			if lod_screen_size_thresholds != None:
+				row.prop(root_obj, '["lod_screen_size_thresholds"]', text="")
+			row = col.row(align=False) ; row.scale_y = 0.75
+
+
+
 			
 
 
@@ -267,7 +278,7 @@ class ButtonAddMaterialIndex(bpy.types.Operator):
 		return {'FINISHED'}
 
 class ButtonAddMagicNumber(bpy.types.Operator):
-	bl_idname = "armature.add_magic_number"
+	bl_idname = "root.add_magic_number"
 	bl_label = "Add Magic Number"
 	bl_description = "Add GBFR's Magic file number to the model"
 	bl_options = {'REGISTER', 'UNDO'}
@@ -279,9 +290,10 @@ class ButtonAddMagicNumber(bpy.types.Operator):
 	def execute(self, context):
 		try:
 			obj = context.object
-			if obj.type != 'ARMATURE':
-				if obj.parent.type == 'ARMATURE': obj = obj.parent
-			if obj.type == 'ARMATURE':
+			if obj.type != 'ARMATURE' and obj.type != 'EMPTY':
+				if obj.parent.type == 'ARMATURE' or obj.parent.type == 'EMPTY':
+					obj = obj.parent
+			if obj.type == 'ARMATURE' or obj.type == 'EMPTY':
 				magic = utils_get_magic()
 				obj["magic"] = magic
 				# Set up property
@@ -439,7 +451,7 @@ class ButtonJoinAllMeshes(bpy.types.Operator):
 	@classmethod
 	def poll(cls, context):
 		return (context.active_object is not None and
-				(context.active_object.type == 'MESH' or context.active_object.type == 'ARMATURE'))
+				(context.active_object.type == 'MESH' or (context.active_object.type == 'ARMATURE' or context.active_object.type == 'EMPTY')))
 
 	def execute(self, context):
 		try:
@@ -479,7 +491,7 @@ class ButtonLimitAndNormalizeAllWeights(bpy.types.Operator):
 	bl_idname = "mesh.limit_and_normalize_weights"
 	bl_label = "Limit & Normalize Weights"
 	bl_options = {'REGISTER', 'UNDO'}
-	bl_description = "Limits the weights of all vertices on the mesh to 4 vertex groups, and normalizes them."
+	bl_description = "Limits the weights of all vertices on the mesh to 8/4 vertex groups, and normalizes them."
 
 	limit_number: bpy.props.IntProperty(default=8)
 
