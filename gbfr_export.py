@@ -78,6 +78,34 @@ def build_vert_table(mesh_obj, mesh_data):
 
 	return vert_table, vert_count
 
+def build_mesh_vert_dictionary(mesh_obj, mesh_data):
+	mesh_vert_table = {}
+	
+	for face in mesh_data.polygons:
+		for vert_id, loop_id in zip(face.vertices, face.loop_indices):
+			if vert_id in mesh_vert_table:
+				continue
+			v = mesh_data.vertices[vert_id]
+			loop = mesh_data.loops[loop_id]
+			vert_buffer = []
+			vert_buffer.append(struct.pack('<fff', v.undeformed_co[0], v.undeformed_co[1], v.undeformed_co[2]))
+			vert_buffer.append(struct.pack('<eee', -loop.normal[0], -loop.normal[1], -loop.normal[2]))
+			vert_buffer.append(b'\x00')
+			vert_buffer.append(b'\x00')
+			vert_buffer.append(struct.pack('<eee', loop.tangent[0], loop.tangent[1], loop.tangent[2]))
+			vert_buffer.append(struct.pack('<e', -loop.bitangent_sign))
+			uv = mesh_obj.data.uv_layers.active.data[loop_id].uv
+			vert_buffer.append(struct.pack('<ee', uv[0], uv[1]))
+			
+			mesh_vert_table[vert_id] = vert_buffer
+
+	# Sort the vert_table	
+	keys = list(mesh_vert_table.keys())
+	keys.sort()
+	mesh_vert_table = {i: mesh_vert_table[i] for i in keys}
+
+	return mesh_vert_table
+
 def build_skeleton(armature_obj):
 	DeformJointsTable = []
 	BoneInfoTablesList = []
@@ -150,7 +178,11 @@ def write_some_data(context, filepath, export_scale):
 	root_obj = context.object # Get selected object
 	armature_obj = root_obj if root_obj.type == 'ARMATURE' else None # Get the model's armature if it has one
 	
-	mesh_objects = root_obj.children
+	lod_objects = root_obj.children
+	mesh_objects = []
+	for lod in lod_objects:
+		mesh_objects.extend(list(lod.children))
+	print(mesh_objects)
 	
 	print(f"Exporting Model: {root_obj.name}")
 
@@ -172,6 +204,7 @@ def write_some_data(context, filepath, export_scale):
 		mesh_obj.select_set(False)
 	
 	for mesh_obj in mesh_objects: mesh_obj.select_set(True)
+	for lod_obj in lod_objects: lod_obj.select_set(True)
 	root_obj.select_set(True) # Select root_obj
 	bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) #Apply all transforms
 	root_obj.rotation_euler = (radians(-90),0,0) #Rotate back 90 to Y up
@@ -179,6 +212,7 @@ def write_some_data(context, filepath, export_scale):
 	bpy.context.object.scale = (export_scale, export_scale, export_scale) # Scale the root_obj
 	bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) #Apply all transforms again
 	root_obj.select_set(False) # Deselect root_obj
+	for lod_obj in lod_objects: lod_obj.select_set(False)
 	for mesh_obj in mesh_objects: mesh_obj.select_set(False)
 
 	for mesh_obj in mesh_objects:
@@ -220,8 +254,17 @@ def write_some_data(context, filepath, export_scale):
 			)
 		mesh_obj.select_set(False)
 
-	# Re-encode and rename all the bone groups back to 4-byte little-endian ASCII uints
+	print(f"2. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
+	timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+	# ================================================
+	# Prepare and Build Skeleton file
+	# ================================================
+	deform_bones_table = []
 	if armature_obj:
+		bone_name_to_index_dict = {bone.name: i for i, bone in enumerate(armature_obj.data.bones)}
+		# Re-encode and rename all the bone groups back to 4-byte little-endian ASCII uints
+		# ================================================
 		bone_groups = armature_obj.data.collections if bpy.app.version >= (4, 0, 0) else armature_obj.pose.bone_groups
 		for bone_group in bone_groups:
 			try:
@@ -235,16 +278,9 @@ def write_some_data(context, filepath, export_scale):
 					+ "Group names will also be truncated to 4 bytes, starting with an '_'.")
 					)
 
-	print(f"2. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
-	timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
-	# ================================================
-	# Build Skeleton file
-	# ================================================
-	DeformJointsTable = []
-	if armature_obj is not None:
 		# Save skeleton_buffer output to .skeleton file
-		skeleton_buffer, DeformJointsTable = build_skeleton(armature_obj)
+		# ================================================
+		skeleton_buffer, deform_bones_table = build_skeleton(armature_obj)
 		try:
 			skeleton_file = open(os.path.splitext(filepath)[0] + ".skeleton", 'wb')
 			skeleton_file.write(skeleton_buffer)
@@ -267,25 +303,26 @@ def write_some_data(context, filepath, export_scale):
 	lods_data = []
 	shadowlods_data = []
 	meshes_table = []
-	mesh_list = []
-	mesh_ids = {}
+	mesh_names_list = []
 	mesh_bounds = {}
 	unique_materials_dict = {}
+
+	vertex_group_boundary_boxes = []
 
 	# For bounding sphere
 	model_bounding_sphere = []
 	model_bounds_min = Vector((float('inf'),) * 3)
 	model_bounds_max = Vector((float('-inf'),) * 3)
 
-	for mesh_obj in mesh_objects:
+	for lod_obj_index, lod_obj in enumerate(lod_objects):
 		try:
-			# TODO: Handle shadow_lods
-			lod_id = next((i for i in range(5) if f"_lod{i}" in mesh_obj.name.lower()), None)
-			shadowlod_id = next((i for i in range(3) if f"_shadowlod{i}" in mesh_obj.name.lower()), None)
+			lod_id = next((i for i in range(5) if f"lod{i}" in lod_obj.name.lower()), None)
+			shadowlod_id = next((i for i in range(3) if f"shadowlod{i}" in lod_obj.name.lower()), None)
 			is_shadowlod = shadowlod_id != None
 			if lod_id == None and shadowlod_id == None:
-				raise ValueError(format_exception("Mesh object names must contain '_lod#' where '#' is a number between 0-4. \n" \
-				"For shadow meshes, name must contain '_shadowlod#'"))
+				raise ValueError(format_exception("Model hierarchy be structured `Root object -> LOD# object -> Mesh(es)`\n" \
+									  "LOD object names must contain 'lod#' where '#' is a number between 0-4.\n" \
+									  "For Shadow LODs, name must contain 'shadowlod#' with a number between 0-2"))
 
 			# Create folder and file
 			mmesh_folder_name = f"{'shadow' if is_shadowlod else ''}lod{shadowlod_id if is_shadowlod else lod_id}" # lod# or shadowlod#
@@ -295,278 +332,200 @@ def write_some_data(context, filepath, export_scale):
 			os.makedirs(os.path.dirname(mmesh_path), exist_ok=True)
 			mmesh_file = open(mmesh_path, 'wb')
 
-			mesh_data = mesh_obj.data
+			# Init LOD Data variables
 			mesh_buffers_table = []
-			
-			# Build the Vertex Table
-			vert_table, vert_count = build_vert_table(mesh_obj, mesh_data)
-			
-			# Write Vertex Table to Mesh Buffer
-			for vert in vert_table.items():
-				for elm in vert[1]:
-					mmesh_file.write(elm)
-			mesh_buffers_table.append({'offset': 0, 'size': mmesh_file.tell()})
-
-			print(f"4. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
-			timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
-			# ======== Start of Armature related stuff ========
-			weight_id_table = [] ; weight_id_table_2 = []
-			weight_table = [] ; weight_table_2 = []
-			vertex_group_boundary_boxes = []
-			if armature_obj is not None:
-				# Build vertex groups
-				# ================================================
-				vertex_group_verts = defaultdict(list)
-				bone_name_to_index_dict = {bone.name: i for i, bone in enumerate(armature_obj.data.bones)}
-
-				max_num_weights = max([len(v.groups) for v in mesh_data.vertices])
-				if max_num_weights > 8: 
-					raise UserWarning(
-						format_exception("Your model has one or more vertices with more than 8 vertex weights.\n"
-						+"To export successfully, make sure to use Limit Total on your model."
-						)
-					)
-
-				for v in mesh_data.vertices:
-					if v.index not in vert_table:
-						continue # Make sure we're only processing verts we're exporting
-
-					for n in range(max_num_weights): # Vertex Groups compiled as sets of 4
-						if n < len(v.groups): # Existing Groups
-							group_name = mesh_obj.vertex_groups[v.groups[n].group].name
-							bone_index = bone_name_to_index_dict.get(group_name, None)
-							
-							weight_group_index = struct.pack('<H', bone_index)
-							weight_group_value = struct.pack('<H', int(v.groups[n].weight * 65535))
-							if n<4:
-								weight_id_table.append(weight_group_index)
-								weight_table.append(weight_group_value)
-							else:
-								weight_id_table_2.append(weight_group_index)
-								weight_table_2.append(weight_group_value)
-							
-							# Get Vertex group vertices for bounding boxes
-							vertex_group_verts[v.groups[n].group].append(mesh_obj.matrix_world @ v.co)
-						else:
-							# Pad vertex's weight group list out to full 4 slots with 0's
-							padding_value = struct.pack('<H', 0)
-							if n<4:
-								weight_id_table.append(padding_value)
-								weight_table.append(padding_value)
-							else:
-								weight_id_table_2.append(padding_value)
-								weight_table_2.append(padding_value)
-
-				# Assign weights
-				write_mesh_buffer(mmesh_file, weight_id_table, mesh_buffers_table)
-				if weight_id_table_2: write_mesh_buffer(mmesh_file, weight_id_table_2, mesh_buffers_table)
-				write_mesh_buffer(mmesh_file, weight_table, mesh_buffers_table)
-				if weight_table_2: write_mesh_buffer(mmesh_file, weight_table_2, mesh_buffers_table)
-
-				# Calculate Boundary Boxes for each Vertex Group
-				for vg_index, vg_coords in sorted(vertex_group_verts.items()):
-					vertex_group_boundary_boxes.append(
-						{
-							"min": {'x': min(v.x for v in vg_coords), 'y': min(v.y for v in vg_coords), 'z': min(v.z for v in vg_coords)},
-							"max": {'x': max(v.x for v in vg_coords), 'y': max(v.y for v in vg_coords), 'z': max(v.z for v in vg_coords)}
-						}
-					)
-			# ======== End of Armature related stuff ========
-
-			print(f"5. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
-			timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-			
-
-			# Build Vertex Colors and UV1 Coordinates
-			vertex_colors_table = []
-			color_layer = mesh_data.color_attributes.get("COLOR")
-
-			tex_coords_table = [] ; uv1_coords = []
-			if len(mesh_data.uv_layers)>1:
-				uv1_coords = [() for v in mesh_data.vertices]
-				for loop in mesh_data.loops:
-					uv1_coords[loop.vertex_index] = mesh_data.uv_layers[1].data[loop.index].uv
-
-			for v in mesh_data.vertices:
-				# VERTEX COLORS
-				if color_layer:
-					r = int(color_layer.data[v.index].color[0] * 255)
-					g = int(color_layer.data[v.index].color[1] * 255)
-					b = int(color_layer.data[v.index].color[2] * 255)
-					a = int(color_layer.data[v.index].color[3] * 255)
-					vertex_colors_table.append(struct.pack('<BBBB', r, g, b, a))
-
-				# TEXTURE COORDINATES
-				if uv1_coords:
-					tex_coords_table.append(struct.pack('<ee', uv1_coords[v][0], uv1_coords[v][1]))
-
-				# CALCULATE BOUNDING SPHERE
-				model_bounds_min.x = min(model_bounds_min.x, v.co.x)
-				model_bounds_min.y = min(model_bounds_min.y, v.co.y)
-				model_bounds_min.z = min(model_bounds_min.z, v.co.z)
-				model_bounds_max.x = max(model_bounds_max.x, v.co.x)
-				model_bounds_max.y = max(model_bounds_max.y, v.co.y)
-				model_bounds_max.z = max(model_bounds_max.z, v.co.z)
-
-			# Implementation doesn't match GBFR, but still works
-			model_bounds_center = (model_bounds_min + model_bounds_max)/2
-			model_bounds_radius = max((v.co - model_bounds_center).length for v in mesh_data.vertices)
-			model_bounding_sphere = [model_bounds_center.x, model_bounds_center.y, model_bounds_center.z, model_bounds_radius]
-			print("model_bounding_sphere", model_bounding_sphere)
-
-			# Assign Vertex Colors
-			if vertex_colors_table: write_mesh_buffer(mmesh_file, vertex_colors_table, mesh_buffers_table)
-			# Assign texture coordinates
-			if tex_coords_table: write_mesh_buffer(mmesh_file, tex_coords_table, mesh_buffers_table)
-
-			# Build faces - always built last, face data is placed at end of mmesh file
-			# face_table = []
-			# face_count = 0
-			# for face in mesh_data.polygons:
-			# 	skip_face = False
-			# 	for vert in face.vertices:
-			# 		if vert not in vert_table:
-			# 			skip_face = True
-			# 			break
-			# 	if skip_face: continue
-
-			# 	face_table.append(struct.pack('<III', face.vertices[0], face.vertices[1], face.vertices[2]))
-			# 	face_count += 3 # Face count is stored as 3 X Face Count
-			# write_mesh_buffer(mmesh_file, face_table, mesh_buffers_table)
-			# mmesh_file.close() # Close mmesh
-			# del mmesh_file # Delete Reference
-			
-			
-			print(f"6. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
-			timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
-			# Build lod data
-			# ================================================
-			# Build materials list
-			for material in mesh_data.materials:
-				# Check material index exists and is valid
-				if "MaterialID" not in material:
-					raise UserWarning(
-						format_exception(f"Material '{material.name}' has no Material Index assigned!\n"
-						+ "Please select the mesh and use the GBFR Tool Shelf Panel in the 3D view to assign one and set it to a non-negative number.\n"
-						+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
-					)
-				material_id = material['MaterialID']
-				if material_id < 0:
-					raise UserWarning(
-						format_exception(f"Material Index '{material_id}' on {material.name} is invalid.\n"
-						+ "Please select the mesh and set it to a non-negative number in the GBFR Tool shelf panel.\n"
-						+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
-					)
-				
-				if material_id not in unique_materials_dict:
-					unique_materials_dict[material_id] = material
-
-			# ================================================
-			# Construct faces, chunks, and meshes list
-			face_table = []
-			face_count = 0
-			
 			chunks_table = []
 			chunks = {}
-			mesh_count = -1
 
-			for face in mesh_data.polygons:
-				# Build face table
-				face_table.append(struct.pack('<III', face.vertices[0], face.vertices[1], face.vertices[2]))
-				face_count += 3 # Face count is stored as 3 X Face Count
+			vert_table = []
+			weight_id_table = [] ; weight_id_table_2 = []
+			weight_table = [] ; weight_table_2 = []
+			vertex_colors_table = []
+			tex_coords_table = []
+			face_table = []
+			face_table_offset = 0 # Updates after each mesh
+			chunks_face_offset = 0 # Updates after each mesh
 
-				mat_index = face.material_index
-				material = mesh_data.materials[mat_index]
-				mesh_name = material.name.split("#")[0]
-			
-				if mesh_name not in mesh_ids:
-					mesh_count += 1
-					mesh_ids[mesh_name] = mesh_count
-					mesh_list.append(mesh_name)
+			vertex_group_verts = defaultdict(list)
+			mesh_objects = lod_obj.children
+			for mesh_obj_index, mesh_obj in enumerate(mesh_objects):
+				mesh_data = mesh_obj.data
 				
-				mesh_id = mesh_ids[mesh_name]
+				# Build the Vertex Table
+				# vert_table, vert_count = build_vert_table(mesh_obj, mesh_data)
+				mesh_vert_dict = build_mesh_vert_dictionary(mesh_obj, mesh_data)
+				vert_table.extend(list(mesh_vert_dict.values()))
 
+				print(f"4. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
+				timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-				if material.name not in chunks: # Init Chunk
-					chunks[material.name] = {
-						'offset': face.index * 3,
-						'count': 0,
-						'mesh_id': mesh_id,
-						'material_id': material["MaterialID"],
-						'a5': 0,
-						'a6': 0
-					}
+				# ======== Start of Armature related stuff ========
+				if armature_obj is not None:
+					# Build vertex groups
+					# ================================================
+					max_num_weights = max([len(v.groups) for v in mesh_data.vertices])
+					weights_count = 4 if max_num_weights <= 4 else 8 # sets of 4 or 8
+					if max_num_weights > 8:
+						raise UserWarning(
+							format_exception("Your model has one or more vertices with more than 8 vertex weights.\n"
+							+"To export successfully, make sure to use Limit Total on your model."
+							)
+						)
 
-					mesh_bounds[mesh_name] = { #Initialize chunk bounds at infinity
-						'min': {'x': float('inf'), 'y': float('inf'), 'z': float('inf')},
-						'max': {'x': float('-inf'), 'y': float('-inf'), 'z': float('-inf')}
-					}
+					for v in mesh_data.vertices:
+						# if v.index not in mesh_vert_dict:
+						# 	continue # Make sure we're only processing verts we're exporting
 
-				chunk = chunks[material.name]
-				chunk['count'] += 3
+						for n in range(weights_count): # Vertex Groups compiled as sets of 4 or 8
+							if n < len(v.groups): # Existing Groups
+								group_name = mesh_obj.vertex_groups[v.groups[n].group].name
+								bone_index = bone_name_to_index_dict.get(group_name, None)
+								
+								weight_group_index = struct.pack('<H', bone_index)
+								weight_group_value = struct.pack('<H', int(v.groups[n].weight * 65535))
+								if n<4:
+									weight_id_table.append(weight_group_index)
+									weight_table.append(weight_group_value)
+								else:
+									weight_id_table_2.append(weight_group_index)
+									weight_table_2.append(weight_group_value)
+								
+								# Get Vertex group vertices for bounding boxes
+								if lod_obj_index > 0: continue # Only calculate for first LOD processed.
+								vertex_group_verts[v.groups[n].group].append(mesh_obj.matrix_world @ v.co)
+							else:
+								# Pad vertex's weight group list out to full 4 slots with 0's
+								padding_value = struct.pack('<H', 0)
+								if n<4:
+									weight_id_table.append(padding_value)
+									weight_table.append(padding_value)
+								else:
+									weight_id_table_2.append(padding_value)
+									weight_table_2.append(padding_value)
 
-				for vert_index in face.vertices: #Calculate and update bounds
-					vert_co = mesh_data.vertices[vert_index].co
-					mesh_bounds[mesh_name]['min']['x'] = min(mesh_bounds[mesh_name]['min']['x'], vert_co.x)
-					mesh_bounds[mesh_name]['min']['y'] = min(mesh_bounds[mesh_name]['min']['y'], vert_co.y)
-					mesh_bounds[mesh_name]['min']['z'] = min(mesh_bounds[mesh_name]['min']['z'], vert_co.z)
-					mesh_bounds[mesh_name]['max']['x'] = max(mesh_bounds[mesh_name]['max']['x'], vert_co.x)
-					mesh_bounds[mesh_name]['max']['y'] = max(mesh_bounds[mesh_name]['max']['y'], vert_co.y)
-					mesh_bounds[mesh_name]['max']['z'] = max(mesh_bounds[mesh_name]['max']['z'], vert_co.z)
+					print("len(mesh_data.vertices), len(weight_id_table)/4", len(mesh_data.vertices), len(weight_id_table)/4, max_num_weights)
+					# Calculate Boundary Boxes for each Vertex Group
+					if lod_obj_index == 0: # Only calculate for first LOD processed.
+						for vg_index, vg_coords in sorted(vertex_group_verts.items()):
+							vertex_group_boundary_boxes.append(
+								{
+									"min": {'x': min(v.x for v in vg_coords), 'y': min(v.y for v in vg_coords), 'z': min(v.z for v in vg_coords)},
+									"max": {'x': max(v.x for v in vg_coords), 'y': max(v.y for v in vg_coords), 'z': max(v.z for v in vg_coords)}
+								}
+							)
+				# ======== End of Armature related stuff ========
 
-			print("len(chunks.keys())", len(chunks.keys()))
-			chunks_table = chunks.values()
-			
-			# Write faces to .mmesh - always written last in mmesh, face data is placed at end of mmesh file
-			write_mesh_buffer(mmesh_file, face_table, mesh_buffers_table)
-			# Done with .mmesh file
-			mmesh_file.close() # Close mmesh
-			del mmesh_file # Delete Reference
-			"""
-			for i, material in enumerate(mesh_data.materials): 
-				# Check material index exists and is valid
-				if "MaterialID" not in material:
-					raise UserWarning(
-						format_exception(f"Material '{material.name}' has no Material Index assigned!\n"
-						+ "Please select the mesh and use the GBFR Tool Shelf Panel in the 3D view to assign one and set it to a non-negative number.\n"
-						+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
-					)
-				if material['MaterialID'] < 0:
-					raise UserWarning(
-						format_exception(f"Material Index '{material['MaterialID']}' on {material.name} is invalid.\n"
-						+ "Please select the mesh and set it to a non-negative number in the GBFR Tool shelf panel.\n"
-						+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
-					)
+				print(f"5. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
+				timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 				
-				if material['MaterialID'] not in unique_materials_dict:
-					unique_materials_dict[material['MaterialID']] = material
 
-				# Add material name to mesh table
-				mesh_name = material.name.split("#")[0]
-				if mesh_name not in mesh_list:
-					mesh_list.append(mesh_name)
-					mesh_count += 1
-					mesh_ids[mesh_name] = mesh_count
-					mesh_id = mesh_count
-				else:
-					mesh_id = mesh_ids[mesh_name]
+				# Build Vertex Colors and UV1 Coordinates
+				# TODO: account for funny meshes that don't have Vertex Colors and UV1 coordinates, but others do.
+				color_layer = mesh_data.color_attributes.get("COLOR")
 
-				chunk_start = -1 ; chunk_end = -1
+				uv1_coords = []
+				if len(mesh_data.uv_layers)>1:
+					uv1_coords = [() for v in mesh_data.vertices]
+					for loop in mesh_data.loops:
+						uv1_coords[loop.vertex_index] = mesh_data.uv_layers[1].data[loop.index].uv
+
+				for v in mesh_data.vertices:
+					# VERTEX COLORS
+					if color_layer:
+						r = int(color_layer.data[v.index].color[0] * 255)
+						g = int(color_layer.data[v.index].color[1] * 255)
+						b = int(color_layer.data[v.index].color[2] * 255)
+						a = int(color_layer.data[v.index].color[3] * 255)
+						vertex_colors_table.append(struct.pack('<BBBB', r, g, b, a))
+
+					# TEXTURE COORDINATES
+					if uv1_coords:
+						tex_coords_table.append(struct.pack('<ee', uv1_coords[v][0], uv1_coords[v][1]))
+
+					# CALCULATE BOUNDING SPHERE
+					if lod_obj_index > 0: continue # Only calculate for first LOD
+					model_bounds_min.x = min(model_bounds_min.x, v.co.x)
+					model_bounds_min.y = min(model_bounds_min.y, v.co.y)
+					model_bounds_min.z = min(model_bounds_min.z, v.co.z)
+					model_bounds_max.x = max(model_bounds_max.x, v.co.x)
+					model_bounds_max.y = max(model_bounds_max.y, v.co.y)
+					model_bounds_max.z = max(model_bounds_max.z, v.co.z)
+
+				# Implementation doesn't match GBFR, but still works
+				if lod_obj_index == 0: # Only calculate for first LOD
+					model_bounds_center = (model_bounds_min + model_bounds_max)/2
+					model_bounds_radius = max((v.co - model_bounds_center).length for v in mesh_data.vertices)
+					model_bounding_sphere = [model_bounds_center.x, model_bounds_center.y, model_bounds_center.z, model_bounds_radius]
+					print("model_bounding_sphere", model_bounding_sphere)
+				
+				print(f"6. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
+				timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+				# Build lod data
+				# ================================================
+				# Build materials list
+				for material in mesh_data.materials:
+					# Check material index exists and is valid
+					if "MaterialID" not in material:
+						raise UserWarning(
+							format_exception(f"Material '{material.name}' has no Material Index assigned!\n"
+							+ "Please select the mesh and use the GBFR Tool Shelf Panel in the 3D view to assign one and set it to a non-negative number.\n"
+							+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
+						)
+					material_id = material['MaterialID']
+					if material_id < 0:
+						raise UserWarning(
+							format_exception(f"Material Index '{material_id}' on {material.name} is invalid.\n"
+							+ "Please select the mesh and set it to a non-negative number in the GBFR Tool shelf panel.\n"
+							+ f"(Press N to open the tool shelf while your cursor is in the 3D view)")
+						)
+					
+					if material_id not in unique_materials_dict:
+						unique_materials_dict[material_id] = material
+
+				# ================================================
+				# Construct faces, chunks, and meshes list
+				mesh_name = mesh_obj.name.split(".")[0]
+				if mesh_name not in mesh_names_list:
+					mesh_names_list.append(mesh_name)
+				# mesh_id = mesh_names_list.index(mesh_name)
+
 				for face in mesh_data.polygons:
-					chunk_end = face.index * 3
-					if chunk_start == -1 and face.material_index == i:
-						chunk_start = face.index * 3
-					elif chunk_start != -1 and face.material_index != i:
-						break
+					# Build face table, offset vertex indices with the length of the vert_table
+					face_table.append(
+						struct.pack(
+							'<III', 
+							face.vertices[0] + face_table_offset, 
+							face.vertices[1] + face_table_offset, 
+							face.vertices[2] + face_table_offset
+							)
+						)
 
-					# Get chunk's bounds
-					if mesh_name not in mesh_bounds:
-						mesh_bounds[mesh_name] = { #Initialize chunk bounds at infinity
-							'min': {'x': float('inf'), 'y': float('inf'), 'z': float('inf')},
-							'max': {'x': float('-inf'), 'y': float('-inf'), 'z': float('-inf')}
+					mat_index = face.material_index
+					material = mesh_data.materials[mat_index]
+					material_id = material["MaterialID"]
+					
+					chunk_id = f"{mesh_obj_index}_{material_id}"
+					if chunk_id not in chunks: # Init Chunk
+						chunks[chunk_id] = {
+							'offset': chunks_face_offset + (face.index * 3),
+							'count': 0,
+							'mesh_id': mesh_obj_index,
+							'material_id': material["MaterialID"],
+							'a5': 0,
+							'a6': 0
 						}
+
+						if lod_obj_index == 0: # Only calculate for first LOD object
+							mesh_bounds[mesh_name] = { #Initialize chunk bounds at infinity
+								'min': {'x': float('inf'), 'y': float('inf'), 'z': float('inf')},
+								'max': {'x': float('-inf'), 'y': float('-inf'), 'z': float('-inf')}
+							}
+
+					chunks[chunk_id]['count'] += 3
+
+					if lod_obj_index > 0: continue # Only calculate for first LOD object
 					for vert_index in face.vertices: #Calculate and update bounds
 						vert_co = mesh_data.vertices[vert_index].co
 						mesh_bounds[mesh_name]['min']['x'] = min(mesh_bounds[mesh_name]['min']['x'], vert_co.x)
@@ -576,14 +535,49 @@ def write_some_data(context, filepath, export_scale):
 						mesh_bounds[mesh_name]['max']['y'] = max(mesh_bounds[mesh_name]['max']['y'], vert_co.y)
 						mesh_bounds[mesh_name]['max']['z'] = max(mesh_bounds[mesh_name]['max']['z'], vert_co.z)
 
-				if i == len(mesh_data.materials) - 1:
-					chunk_end += 3
-				chunks_table.append({'offset': chunk_start, 'count': chunk_end - chunk_start, 'mesh_id': mesh_id, 
-						'material_id': material["MaterialID"], 'a5': 0, 'a6': 0})
-			"""
+				face_table_offset = len(vert_table) # Update face table offset for next mesh in LOD
+				chunks_face_offset = len(face_table) * 3
 
-			print(f"7. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
-			timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+				print(f"LOD{lod_obj_index} - {mesh_obj.name} Done!")
+
+				print(f"7. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
+				timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+			print("len(chunks.keys())", len(chunks.keys()))
+			chunks_table = list(chunks.values())
+			pprint(chunks_table)
+
+			# Write .mmesh Buffers
+			# ================================================
+			# Write Vertex Table to Mesh Buffer
+			# for vert in vert_table.items():
+			# 	print(vert)
+			# 	for elm in vert[1]:
+			# 		mmesh_file.write(elm)
+			# Write Vertex Table to Mesh Buffer
+			for vert in vert_table:
+				for elm in vert:
+					mmesh_file.write(elm)
+			mesh_buffers_table.append({'offset': 0, 'size': mmesh_file.tell()})
+
+			
+
+			# Assign weights
+			if weight_id_table 	: write_mesh_buffer(mmesh_file, weight_id_table, mesh_buffers_table)
+			if weight_id_table_2: write_mesh_buffer(mmesh_file, weight_id_table_2, mesh_buffers_table)
+			if weight_table		: write_mesh_buffer(mmesh_file, weight_table, mesh_buffers_table)
+			if weight_table_2	: write_mesh_buffer(mmesh_file, weight_table_2, mesh_buffers_table)
+
+			# Assign Vertex Colors
+			if vertex_colors_table: write_mesh_buffer(mmesh_file, vertex_colors_table, mesh_buffers_table)
+			# Assign texture coordinates
+			if tex_coords_table: write_mesh_buffer(mmesh_file, tex_coords_table, mesh_buffers_table)
+			
+			# Write faces to .mmesh - always written last in mmesh, face data is placed at end of mmesh file
+			write_mesh_buffer(mmesh_file, face_table, mesh_buffers_table)
+			# Done with .mmesh file
+			mmesh_file.close() # Close mmesh
+			del mmesh_file # Delete Reference
 
 			# Create lod data table
 			# ================================================
@@ -603,16 +597,20 @@ def write_some_data(context, filepath, export_scale):
 
 			lod_data_table = {
 				'buffers': mesh_buffers_table, 
-				'chunks': chunks_table, 
-				'vertex_count': vert_count,
-				'index_count': face_count,
+				'chunks': chunks_table,
+				'vertex_count': len(vert_table),
+				'index_count': len(face_table) * 3, # index_count is stored as 3 X Face Count
 				'buffer_types': buffer_types, # mesh_obj.get("buffer_types", 11),
-				'a6': bool_array_to_byte(mesh_obj.get("a6", [False * 8])) # TODO
+				'a6': bool_array_to_byte(lod_obj.get("a6", [False * 8])) # TODO
 				}
 			if not is_shadowlod:
 				lods_data.append(lod_data_table)
 			else:
 				shadowlods_data.append(lod_data_table)
+
+			print(f"8. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
+			timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
 		except Exception as err:
 			raise
 		finally:
@@ -623,7 +621,7 @@ def write_some_data(context, filepath, export_scale):
 			except: pass # If file was not defined, disregard
 
 	# Construct and append mesh to meshes table
-	for mesh_name in mesh_list:
+	for mesh_name in mesh_names_list:
 		mesh_dict = {}
 		mesh_dict['name'] = mesh_name
 		mesh_dict['bbox'] = {'min': mesh_bounds[mesh_name]['min'], 'max': mesh_bounds[mesh_name]['max']}
@@ -635,9 +633,9 @@ def write_some_data(context, filepath, export_scale):
 	# TODO: Find elegant way to get texture name from .mmat
 	# Note: .mmat also have some hash, maybe for names, but are not the same as hash in .minfo
 	unique_materials_dict = dict(sorted(unique_materials_dict.items())) # Sort by material_ids
-	materials_data = [
+	materials_table = [
 		{
-			"unique_name_hash": XXHash32Custom.Hash_string(str(material['MaterialID'])), # Hash the material ID # TODO: figure out proper way.
+			"unique_name_hash": int(material.name) if int(material.name) else XXHash32Custom.Hash_string(material.name), # Hash the material name
 			"material_flags": bool_array_to_byte(material['material_flags']) # Unknown ubyte material flags
 		}
 		for material in unique_materials_dict.values()
@@ -649,8 +647,8 @@ def write_some_data(context, filepath, export_scale):
 		'shadow_lods': shadowlods_data, # TODO: Used for BGs, implement
 		'lod_screen_size_thresholds': root_obj.get("lod_screen_size_thresholds", [1.0, 0.6, 0.15, 0.07]), # TODO: Create LOD level distances controls
 		'meshes': meshes_table,
-		'materials': materials_data,
-		'deform_bone_to_bone_index_table': DeformJointsTable,
+		'materials': materials_table,
+		'deform_bone_to_bone_index_table': deform_bones_table,
 		'deform_bone_boundary_box': vertex_group_boundary_boxes,
 		'bounding_sphere': model_bounding_sphere, # root_obj.get("bounding_sphere", [0.0, 0.0, 0.0, 0.0]),
 		# bg_reaction_data,
@@ -674,12 +672,13 @@ def write_some_data(context, filepath, export_scale):
 		#camera_near_fade_aabb_radius,
 		}
 	# Extra params (model context dependent, some models have these, some dont)
-	# TODO: Convert Bool array parameters back to bytes
 	extra_minfo_params = ['bg_reaction_data','f15','u20','scene_graph_mode','use_scene_graph_cache','bool24','is_ship','bool28','bool29','force_near_fade_evaluation','bool31','use_mesh_aabb_for_fade','render_flags','camera_near_fade_aabb_radius']
+	# extra_minfo_params = ['bg_reaction_data','f15','u20','scene_graph_mode','use_scene_graph_cache','bool24','is_ship','bool28','bool29','force_near_fade_evaluation','use_mesh_aabb_for_fade','render_flags','camera_near_fade_aabb_radius']
+	# byte_params = [] 
 	byte_params = ['bool31', 'render_flags']
 	for param in extra_minfo_params: # Try to get these params from the model
 		param_value = root_obj.get(param, None)
-		if param_value: 
+		if param_value:
 			minfo_data[param] = param_value if param not in byte_params else bool_array_to_byte(param_value)
 	
 	print(f"8. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
@@ -694,6 +693,8 @@ def write_some_data(context, filepath, export_scale):
 
 	print(f"9. Elapsed time: {time.perf_counter() - timer_start:.6f} seconds")
 	timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+	print(f"{root_obj.name} Exported!")
 
 	return {'FINISHED'}
 
@@ -721,18 +722,39 @@ class ExportSomeData(Operator, ExportHelper):
 				)
 			if selected_obj.type == 'MESH':
 				#---------------------------------
+				lod_obj = selected_obj.parent
+				if lod_obj: root_obj = lod_obj.parent
 				print(selected_obj.parent)
-				if selected_obj.parent and selected_obj.parent.type in ('ARMATURE','EMPTY'):
+				if selected_obj.parent and selected_obj.parent.type in ('EMPTY'):
 					selected_obj = selected_obj.parent # Set root as selected
-					utils_select_active(selected_obj)
+					if selected_obj.parent and selected_obj.parent.type in ('ARMATURE','EMPTY'):
+						selected_obj = selected_obj.parent # Set root as selected
+						utils_select_active(selected_obj)
+					else: raise UserWarning(
+							format_exception("ERROR: Selected Mesh has no root object or armature as parent!\nMake sure:\n" +
+							"1. You have the correct mesh selected.\n" +
+							"2. The mesh is parented to an armature or an empty root.\n"
+							)
+						)
 				else: raise UserWarning(
-						format_exception("ERROR: Selected Mesh has no root object or armature as parent!\nMake sure:\n" +
-						"1. You have the correct mesh selected.\n" +
-						"2. The mesh is parented to an armature or an empty root.\n"
+						format_exception("ERROR: Selected Mesh has no empty object named 'LOD#' as parent!\nMake sure:\n" \
+						"1. You have the correct mesh selected.\n" \
+						"2. The mesh is parented to an empty named 'LOD#' which is parented to an armature or an empty root.\n" \
+						"Example Model Hierarchy:" \
+						"\tRoot\n" \
+						"\t->LOD0\n" \
+						"\t\t->Mesh\n"
 						)
 					)
+			if selected_obj.type == 'EMPTY':
+				root_obj = selected_obj.parent
+				if root_obj and root_obj.type in ('ARMATURE','EMPTY'):
+					selected_obj = root_obj
+					utils_select_active(selected_obj)
+
+				
 			if len(selected_obj.children) < 1:
-				raise UserWarning(format_exception(f"ERROR: Selected Model {selected_obj.name} has no mesh!"))
+				raise UserWarning(format_exception(f"ERROR: Selected Model {selected_obj.name} has no LODs!"))
 			
 			# self.filepath = selected_obj.name + self.filename_ext
 			self.filepath = os.path.join(
@@ -766,14 +788,24 @@ class ExportSomeData(Operator, ExportHelper):
 				root_obj_copy.hide_set(False) # ensure root object isnt hidden
 				export_collection.objects.link(root_obj_copy)
 
-				for child in selected_obj.children:
-					if child.type == 'MESH':
+				for lod_obj in selected_obj.children:
+					if lod_obj.type != 'EMPTY': continue
+					lod_obj_copy = lod_obj.copy()
+					lod_obj_copy.data = lod_obj.data.copy() if lod_obj.data else None
+					lod_obj_copy.hide_set(False)
+					export_collection.objects.link(lod_obj_copy)
+					# Parent the duplicated lod object root to the duplicated root
+					lod_obj_copy.parent = root_obj_copy
+
+					for child in lod_obj.children:
+						if child.type != 'MESH': continue
+						
 						mesh_obj_copy = child.copy()
 						mesh_obj_copy.data = child.data.copy()
 						mesh_obj_copy.hide_set(False) # ensure mesh object isnt hidden
 						export_collection.objects.link(mesh_obj_copy)
-						# Parent the duplicated mesh to the duplicated root
-						mesh_obj_copy.parent = root_obj_copy
+						# Parent the duplicated mesh to the duplicated lod object root
+						mesh_obj_copy.parent = lod_obj_copy
 						for modifier in mesh_obj_copy.modifiers: # Set armature modifier to root_obj_copy
 							if modifier.type == 'ARMATURE':
 								modifier.object = root_obj_copy

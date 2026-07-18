@@ -162,16 +162,18 @@ def utils_rename_bones(armature, name_to_index = False):
 				pass
 		if name_to_index: # Bone Name to Index
 			try: #Rename the bone
-				#Get the closest matching bone name
-				name_matches = difflib.get_close_matches(bone.name.lower().replace(' ','_').strip(" _."), all_dictionary_names, 1, 0.8)
-				if len(name_matches) == 0: continue
-				# print(f"bone.name:{bone.name}\t|\tname_matches:{name_matches}")
-				closest_name = name_matches[0]
-				for index, names in bone_names_mapping.items():
-					names = [name.lower().replace(' ','_').strip(" _.") for name in names]
-					if closest_name in names:
-						bone.name = index
-						break
+				if 'original_name' in bone: # If original name variable stored in bone
+					bone.name = bone['original_name']
+				else: #Get the closest matching bone name
+					name_matches = difflib.get_close_matches(bone.name.lower().replace(' ','_').strip(" _."), all_dictionary_names, 1, 0.8)
+					if len(name_matches) == 0: continue
+					print(f"bone.name:{bone.name}\t|\tname_matches:{name_matches}")
+					closest_name = name_matches[0]
+					for index, names in bone_names_mapping.items():
+						names = [name.lower().replace(' ','_').strip(" _.") for name in names]
+						if closest_name in names:
+							bone.name = index
+							break
 			except:
 				pass
 
@@ -184,8 +186,8 @@ def utils_separate_by_materials(context):
 	# Rename objects based on material names
 	for obj in context.selected_objects:
 		if obj.type == 'MESH':
-			material_name = obj.active_material.name if obj.active_material else obj.name
-			obj.name = material_name
+			material_name = obj.active_material.name if obj.active_material else obj.data.name
+			obj.name = f"{obj.data.name.split('.',1)[0]}.{material_name}"
 
 # Re-Orders the mesh's materials based on alphabetic order of the first character
 # then by reverse numberically of the next 2 characters, then lastly by .# index at the end
@@ -237,7 +239,7 @@ def utils_join_meshes(context, selected_only = False):
 	if active_object.type == "MESH":
 		utils_select_active(active_object.parent)
 		active_object = active_object.parent
-	if active_object.type == 'ARMATURE':
+	if active_object.type in ('ARMATURE', 'EMPTY'):
 		armature = active_object
 		meshes = [obj for obj in armature.children if obj.type == 'MESH']
 		bpy.ops.object.select_all(action='DESELECT') #Clear selections

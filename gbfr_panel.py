@@ -93,6 +93,8 @@ class GBFRToolPanel_Utilities(bpy.types.Panel):
 		box.label(text="Armature:", icon='ARMATURE_DATA')
 		row = box.row() ; row.scale_y = 0.5	
 		row.label(text="Translate Bones To:", icon="BONE_DATA")
+		row = box.row() ; row.scale_y = 0.5
+		row.label(text="Only use on humanoid models! Names are just approximates!", icon="ERROR")
 		
 		row = box.row(align=True) ; row.scale_y = 1.5
 		button = row.operator("armature.translate_bones_to_unity_blender", icon='NONE')

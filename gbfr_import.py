@@ -5,6 +5,7 @@ import time
 import struct
 from math import radians
 from pprint import pprint
+from collections import defaultdict
 
 from .Entities.MInfo_ModelInfo.ModelInfo import ModelInfo
 from .Entities.MInfo_ModelInfo.VertexBufferType import VertexBufferType
@@ -55,6 +56,7 @@ def build_skeleton(skeleton:ModelSkeleton, collection, bone_scale_multiplier = 1
 		edit_bone.use_local_location = True
 		edit_bone.head = (0, 0, 0)
 		edit_bone.tail = (0, 0.05 * bone_scale_multiplier, 0)
+		edit_bone['original_name'] = name
 		
 		if parent_index != 65535: # Parent the bone to its parent if it has a parent
 			edit_bone.parent = armature_obj.data.edit_bones[parent_index]
@@ -134,7 +136,23 @@ def byte_to_bool_array(byte_value):
 def bool_array_to_byte(bool_array):
     return sum((1 << i) for i, enabled in enumerate(bool_array) if enabled)
 
-def get_mesh_vertex_data(mmesh_file, vert_count, bmesh_data):
+def get_mesh_vertex_data(mmesh_file, vert_count):
+	VertTable = [] ; NormalTable = [] ;  UVTable = []
+	# TangentTable = [] ; # Unused
+
+	for n in range(vert_count):
+		VertTable.append(struct.unpack('<fff', mmesh_file.read(4*3))) # Vertex
+		NormalTable.append(struct.unpack('<eee', mmesh_file.read(2*3))) # Normal
+		mmesh_file.read(8) # Tangent | Skipped since unused
+		# tangent = struct.unpack('<eee', mmesh_file.read(2*3))
+		# tangent = (tangent[0], tangent[2], tangent[1])
+		# TangentTable.append(tangent)
+		mmesh_file.read(2) # Skip 2
+		UVTable.append(struct.unpack('<ee', mmesh_file.read(2*2))) # UV
+
+	return VertTable, NormalTable, UVTable
+
+def build_mesh_vertex_data(mmesh_file, vert_count, bmesh_data):
 	# VertTable = [] ; TangentTable = [] ; # Unused
 	NormalTable = [] ;  UVTable = []
 	for n in range(vert_count):
@@ -152,6 +170,13 @@ def get_mesh_vertex_data(mmesh_file, vert_count, bmesh_data):
 		UVTable.append(struct.unpack('<ee', mmesh_file.read(2*2)))
 	# return VertTable, NormalTable, TangentTable, UVTable
 	return NormalTable, UVTable
+
+def get_mesh_face_data(mmesh_file, LOD_face_buffer_offset, face_count):
+	faceTable = []
+	mmesh_file.seek(LOD_face_buffer_offset)
+	for n in range(face_count):
+		faceTable.append(struct.unpack('<III', mmesh_file.read(4*3)))
+	return faceTable
 
 def build_mesh_faces(mmesh_file, LOD, bmesh_data, face_count):
 	duplicate_face_indices = []
@@ -222,7 +247,7 @@ def build_mesh_materials(mesh_info, mesh_data, LOD, dupe_face_start, dupe_face_c
 			
 			mat_counter += 1
 
-def get_vertex_weight_indices(mmesh_file, LOD, deform_joints_table, vertex_weights_sets:int, lod_buffers_index:int):
+def get_vertex_weight_indices(mmesh_file, LOD, deform_bones_table, vertex_weights_sets:int, lod_buffers_index:int):
 	weight_indices_table = [[] for _ in range(LOD.Buffers(lod_buffers_index).Size()//8)] # Pre-allocate
 	# Get vertex to bone indices for each vertex weight
 	for set in range(vertex_weights_sets): # For each set of vertex weights
@@ -232,7 +257,7 @@ def get_vertex_weight_indices(mmesh_file, LOD, deform_joints_table, vertex_weigh
 		for n in range(LOD.Buffers(lod_buffers_index).Size()//8): # Same as -> for n in range(vert_count):
 			i0, i1, i2, i3 = struct.unpack('<HHHH', mmesh_file.read(2*4)) # -> int.from_bytes(f.read(2),byteorder='little')
 			try:
-				weight_indices = [deform_joints_table[i0],deform_joints_table[i1],deform_joints_table[i2],deform_joints_table[i3]]
+				weight_indices = [deform_bones_table[i0],deform_bones_table[i1],deform_bones_table[i2],deform_bones_table[i3]]
 				# if len(weight_indices_table) <= n: weight_indices_table.append(weight_indices) # 1st set
 				# else: 
 				weight_indices_table[n].extend(weight_indices) # 2nd set
@@ -294,6 +319,16 @@ def build_vertex_groups(mesh_obj, armature, weight_indices_table, weight_values_
 				raise err
 				pass
 
+def get_vertex_colors(mmesh_file, LOD, lod_buffers_index:int):
+	ColorTable = []
+	mmesh_file.seek(LOD.Buffers(lod_buffers_index).Offset())
+	for v in range(LOD.Buffers(lod_buffers_index).Size()//(4)):
+		color = struct.unpack('<BBBB', mmesh_file.read(1*4))
+		ColorTable.append((color[0] / 255, color[1]/255, color[2]/255, color[3]/255))
+	
+	return ColorTable
+
+
 def assign_vertex_colors(mmesh_file, mesh_data, LOD, lod_buffers_index:int):
 	# Create Vertex Color Layers
 	mesh_data.color_attributes.new(name=f"COLOR", type='BYTE_COLOR', domain='POINT')
@@ -305,6 +340,14 @@ def assign_vertex_colors(mmesh_file, mesh_data, LOD, lod_buffers_index:int):
 		color = struct.unpack('<BBBB', mmesh_file.read(1*4))
 		color_layer.data[v].color = (color[0] / 255, color[1]/255, color[2]/255, color[3]/255)
 		# print(v, color)
+
+def get_texcoords(mmesh_file, LOD, lod_buffers_index:int):
+	TexCoordsTable = [] # Coords are stored per vertex
+	for v in range(LOD.Buffers(lod_buffers_index).Size()//4):
+		tex_coord = struct.unpack('<ee', mmesh_file.read(2*2))
+		TexCoordsTable.append(tex_coord)
+	
+	return TexCoordsTable
 
 def assign_texcoords(mmesh_file, mesh_data, LOD, lod_buffers_index:int):
 	mmesh_file.seek(LOD.Buffers(lod_buffers_index).Offset())
@@ -332,14 +375,9 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 	for obj in bpy.context.selected_objects: 
 		obj.select_set(False) #Deselect everything
 	
-	mesh_info = parse_mesh_info_file(minfo_filepath) # Parse the mesh info
+	model_info = parse_mesh_info_file(minfo_filepath) # Parse the mesh info
 	skeleton = parse_skeleton_file(os.path.splitext(minfo_filepath)[0] + ".skeleton")
 	armature = build_skeleton(skeleton, model_collection, bone_scale) if skeleton else None # Parse the skeleton
-
-	deform_joints_table = []
-	# Get bone weights indices (which bones have weight)
-	for n in range(mesh_info.DeformBoneToBoneIndexTableLength()):
-		deform_joints_table.append(mesh_info.DeformBoneToBoneIndexTable(n))
 	
 	if armature is not None: 
 		root_object = armature
@@ -349,6 +387,9 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 	
 	root_object.name = f"{model_name}"
 	
+	materials_list = []
+	MaterialsTable = [model_info.Materials(i) for i in range(model_info.MaterialsLength())]
+
 	# Build each LOD Mesh
 	# ========================================================================================
 	for mmesh_filepath in mmesh_filepaths:
@@ -363,15 +404,15 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 		mmesh_file_length = mmesh_file.tell()
 		print("mmesh_file_length", mmesh_file_length)
 		lod_index = -1 ; shadow_lod_index = -1;
-		for i in range(mesh_info.LodsLength()):
+		for i in range(model_info.LodsLength()):
 			# Use the faces buffer which is always last as the way to compare file size
-			face_buffer = mesh_info.Lods(i).Buffers(mesh_info.Lods(i).BuffersLength()-1)
+			face_buffer = model_info.Lods(i).Buffers(model_info.Lods(i).BuffersLength()-1)
 			face_buffer_end = face_buffer.Offset() + face_buffer.Size()
 			if mmesh_file_length == face_buffer_end:
 				print("mmesh_file_length == face_buffer_end", mmesh_file_length, "==", face_buffer_end)
 				lod_index = i ; break
-		for k in range(mesh_info.ShadowLodsLength()):
-			face_buffer = mesh_info.ShadowLods(k).Buffers(mesh_info.ShadowLods(k).BuffersLength()-1)
+		for k in range(model_info.ShadowLodsLength()):
+			face_buffer = model_info.ShadowLods(k).Buffers(model_info.ShadowLods(k).BuffersLength()-1)
 			face_buffer_end = face_buffer.Offset() + face_buffer.Size()
 			if mmesh_file_length == face_buffer_end:
 				print("mmesh_file_length == face_buffer_end", mmesh_file_length, "==", face_buffer_end)
@@ -380,9 +421,239 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 			raise Exception(f".minfo and .mmesh file mismatch.\n{minfo_filepath}\n{mmesh_filepath}")
 		is_shadow_lod = shadow_lod_index != -1
 
-		LOD = mesh_info.Lods(lod_index) if not is_shadow_lod else mesh_info.ShadowLods(shadow_lod_index) # Get mesh LOD info of LOD at current LOD index
+		LOD = model_info.Lods(lod_index) if not is_shadow_lod else model_info.ShadowLods(shadow_lod_index) # Get mesh LOD info of LOD at current LOD index
 		
 		mmesh_file.seek(0) # Reset file seek header
+		
+		#=====================================================
+		# NEW IMPORT IMPLEMENTATION
+		# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+		# Create LOD root object
+		lod_name = f"{'shadow' if is_shadow_lod else ''}lod{lod_index if not is_shadow_lod else shadow_lod_index}"
+		lod_object = bpy.data.objects.new(lod_name, None)
+		model_collection.objects.link(lod_object)
+		lod_object.parent = root_object # Parent to root
+		
+		lod_object["a6"] = byte_to_bool_array(LOD.A6())
+
+
+		# Get .minfo data
+		#===================================
+
+		# Map buffer_types bitmask to bools
+		buffer_type_flags = vertex_flags_to_bools(LOD.BufferTypes())
+		print(f"LOD.BufferTypes() {LOD.BufferTypes()}")
+		print("buffer_type_flags", buffer_type_flags)
+		
+		# Counts
+		vert_count = LOD.VertexCount()
+		face_count = LOD.IndexCount() // 3 # PolyCount X 3
+		print(f"vert_count = {vert_count} \n face_count = {face_count} \n LOD.PolyCountX3() = {LOD.IndexCount()}")
+
+		# Get Universal Buffers data (Verts+Normals+UV and Faces)
+		VertTable, NormalTable, UV0Table = get_mesh_vertex_data(mmesh_file, vert_count)
+		print("VertTable, NormalTable, UV0Table", len(VertTable), len(NormalTable), len(UV0Table))
+		LOD_face_buffer_offset = LOD.Buffers(LOD.BuffersLength() - 1).Offset()
+		FaceTable = get_mesh_face_data(mmesh_file, LOD_face_buffer_offset, face_count)
+		print("len(FaceTable)", len(FaceTable))
+
+		# Get dictionary list of Chunks grouped by mesh ID.
+		# LodChunksDict = [LOD.Chunks(chunk_idx) for chunk_idx in range(LOD.ChunksLength())]
+		# LOD.Chunks(0).MeshId()
+		LodChunksDict = defaultdict(list)
+		for chunk_idx in range(LOD.ChunksLength()):
+			chunk = LOD.Chunks(chunk_idx)
+			LodChunksDict[chunk.MeshId()].append(chunk)
+		print("LOD.ChunksLength()", LOD.ChunksLength())
+
+		# Get Additional Buffers Data
+		# ==================================
+		#  Bones & Weight
+		DeformBonesIndexTable = []
+		WeightIndicesTable = []
+		WeightValuesTable = []
+		if armature is not None: 
+			# Get bone weights indices (which bones have weight)
+			for n in range(model_info.DeformBoneToBoneIndexTableLength()):
+				DeformBonesIndexTable.append(model_info.DeformBoneToBoneIndexTable(n))
+			print("len(DeformBonesIndexTable)", len(DeformBonesIndexTable))
+
+			weight_sets_count = 0
+			if 'BLENDINDICES' in buffer_type_flags and 'BLENDWEIGHT' in buffer_type_flags:
+				weight_sets_count += 1
+				if 'BLENDINDICES_2' in buffer_type_flags and 'BLENDWEIGHT_2' in buffer_type_flags:
+					weight_sets_count += 1
+				
+				# Get weight to vertex group indices for each vertex
+				lod_buffers_index = buffer_type_flags.index('BLENDINDICES')
+				WeightIndicesTable = get_vertex_weight_indices(mmesh_file, LOD, DeformBonesIndexTable, weight_sets_count, lod_buffers_index)
+				
+				# Get weight values for each vertex
+				lod_buffers_index = buffer_type_flags.index('BLENDWEIGHT')
+				WeightValuesTable = get_vertex_weight_values(mmesh_file, LOD, weight_sets_count, lod_buffers_index)
+			print("len(WeightIndicesTable)", len(WeightIndicesTable))
+			print("len(WeightValuesTable)", len(WeightValuesTable))
+
+		# Vertex Colours
+		ColorTable = []
+		if 'COLOR' in buffer_type_flags:
+			lod_buffers_index = buffer_type_flags.index('COLOR')
+			ColorTable = get_vertex_colors(mmesh_file, LOD, lod_buffers_index)
+			print("len(ColorTable)", len(ColorTable))
+
+		# Additional UV Set
+		UV1Table = []
+		if 'TEXCOORD' in buffer_type_flags:
+			lod_buffers_index = buffer_type_flags.index('TEXCOORD')
+			UV1Table = get_texcoords(mmesh_file, LOD, lod_buffers_index)
+			print("len(UV1Table)", len(UV1Table))
+
+		# Iterate through and build each .minfo mesh
+		for mesh_index in range(model_info.MeshesLength()):
+			mesh = model_info.Meshes(mesh_index)
+			mesh_name = mesh.Name().decode() ; print(mesh_name)
+			mesh_data = bpy.data.meshes.new(mesh_name)
+			mesh_obj = bpy.data.objects.new(mesh_name, mesh_data)
+			model_collection.objects.link(mesh_obj)
+			utils_select_active(mesh_obj)
+			mesh_obj.parent = lod_object
+
+			vert_index_cache = {}
+			VertsCreationOrderList = []
+
+			# Build mesh
+			bmesh_data = bmesh.new() # Create bmesh
+			normals = []
+			UV0_Layer = bmesh_data.loops.layers.uv.new("UV0") # Create UV Layer
+			mesh_data.uv_layers.new(name="UV0")
+			if UV1Table: 
+				UV1_Layer = bmesh_data.loops.layers.uv.new("UV1") # Create UV Layer
+				mesh_data.uv_layers.new(name="UV1")
+
+			# Build Mesh Materials first
+			for mat_index, mat_data in enumerate(MaterialsTable):
+				mat_name = str(mat_data.UniqueNameHash())
+				mat = bpy.data.materials.get(mat_name) # Get material if it already exists
+				if not mat:
+					mat = bpy.data.materials.new(name=mat_name)
+				if mat not in materials_list:
+					materials_list.append(mat) # Collect in list to be attached to the mesh when a chunk uses the material
+				mat["MaterialID"] = mat_index # Add material ID as custom property
+				mat["unique_name_hash"] = mat_name
+				mat["material_flags"] = byte_to_bool_array(mat_data.MaterialFlags())
+
+			for chunk_idx, chunk in enumerate(LodChunksDict[mesh_index]):
+				# Attach used material to mesh
+				mat = materials_list[chunk.MaterialId()]
+				if not mesh_data.materials.get(mat.name):
+					mesh_data.materials.append(mat)
+				mat_index = mesh_data.materials.find(mat.name)
+
+				# Build Faces
+				# Get verts from vert Table by iterating over Faces Table and its vert index lookup (!!!VERY IMPORTANT!!!)
+				for face_idx in range(chunk.Count() // 3):
+					try:
+						face = FaceTable[(chunk.Offset() // 3) + face_idx]
+						# Build Verts
+						verts = []
+						for v in range(3):
+							vert = vert_index_cache.get(face[v])
+							if vert is None:
+								vert = bmesh_data.verts.new(VertTable[face[v]])
+								vert_index_cache[face[v]] = vert # Chache the vert
+								VertsCreationOrderList.append(face[v]) # Record when vert created
+							verts.append(vert)
+						v1 = verts[0] ; v2 = verts[1] ; v3 = verts[2]
+						# Build Face
+						bmesh_face = bmesh_data.faces.get((v3,v2,v1))
+						face_existed = False
+						if bmesh_face is None:
+							bmesh_face = bmesh_data.faces.new((v3,v2,v1)) # Faces are built counter-clockwise
+						else: face_existed = True
+						# Build Normals and UVs
+						if not face_existed:
+							bmesh_face.smooth = True
+							vert_idx = 2
+							for loop in bmesh_face.loops:
+								loop[UV0_Layer].uv = UV0Table[face[vert_idx]]
+								if UV1Table: loop[UV1_Layer].uv = UV1Table[face[vert_idx]]
+								normals.append(NormalTable[face[vert_idx]])
+								vert_idx -= 1
+							# Assign Materials
+							bmesh_face.material_index = mat_index
+						# Build Vertex Groups and assign weights
+						
+					except Exception as err:
+						# print(f"{n}: {err}")
+						print(len(FaceTable), (chunk.Offset() // 3), face_idx, (chunk.Offset() // 3)+face_idx)
+						raise err
+			bmesh_data.to_mesh(mesh_data) # Update mesh
+			bmesh_data.faces.ensure_lookup_table()
+			mesh_data.normals_split_custom_set(normals) # Assign Normals | Can't directly assign tangents in blender, so use this instead
+			try:
+				mesh_data.calc_tangents()
+			except Exception as err:
+				pass
+			if bpy.app.version < (4, 1, 0): mesh_data.use_auto_smooth = True # Turn on smooth shading
+
+			if armature:
+				bone_index_to_vgroup = {} # Cache for speedup
+				vertex_groups = mesh_obj.vertex_groups
+				bone_data = armature.data.bones
+			
+			if ColorTable: # Create Vertex Color Layer
+				mesh_data.color_attributes.new(name=f"COLOR", type='BYTE_COLOR', domain='POINT')
+
+			# Assign additional vertex data buffers
+			for v, vert in enumerate(VertsCreationOrderList):
+				if ColorTable: # Assign Vertex colors
+					mesh_data.color_attributes[f"COLOR"].data[v].color = ColorTable[vert]
+				if armature and WeightIndicesTable: # Create Vertex groups and assign weights
+					for n in range(len(WeightIndicesTable[vert])): # 4 or 8
+						try:
+							bone_index = WeightIndicesTable[vert][n]
+							weight = float(WeightValuesTable[vert][n]) / 65535
+							if weight == 0: continue
+
+							if bone_index not in bone_index_to_vgroup:
+								# Uses the WeightsIndicesTable to find the names of vertex groups.
+								group_name = bone_data[WeightIndicesTable[vert][n]].name
+
+								# See if a vertex group of that name exists on the mesh or not, add one if not
+								if vertex_groups.find(group_name) == -1:
+									vertex_group = vertex_groups.new(name = group_name)
+								else:
+									vertex_group = vertex_groups[vertex_groups.find(group_name)]
+								bone_index_to_vgroup[bone_index] = vertex_group
+							else:
+								vertex_group = bone_index_to_vgroup[bone_index]
+							
+							# Take the vertex group and add the vertices with their respective weights to it.
+							vertex_group.add([v], weight, 'ADD')
+						except Exception as err:
+							# print(err)
+							print(WeightIndicesTable[v][n])
+							raise err
+
+			if armature:
+				armature_modifier = mesh_obj.modifiers.new("Armature","ARMATURE")
+				armature_modifier.object = armature
+
+				# Now Sort Vertex Groups by Bone Hierarchy
+				if len(mesh_obj.vertex_groups) > 0: # Some models like weapons might have bones but no vertex weights
+					bpy.ops.object.vertex_group_sort(sort_type='BONE_HIERARCHY')
+					mesh_obj.vertex_groups.active_index = 0 # Set selected vertex group back to 0
+		
+		mmesh_file.close()
+		del mmesh_file
+
+		print(f"LOD{lod_index} Done.\n===========\n\n")
+
+		continue
+		
+
+		# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+		#=====================================================
 
 		# Create New Mesh
 		mesh_name = f"{model_name}_{'shadowlod' if is_shadow_lod else 'lod'}{shadow_lod_index if is_shadow_lod else lod_index}_Mesh"
@@ -405,19 +676,19 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 		# ========================================================================================
 		# Get and build Vertex/Face Data
 		# ========================================================================================
-		bm = bmesh.new()
+		bmesh_data = bmesh.new()
 
 		# Get Vertex data (Also assigns Vertex Positions)
-		NormalTable, UVTable = get_mesh_vertex_data(mmesh_file, vert_count, bm)
+		NormalTable, UV0Table = build_mesh_vertex_data(mmesh_file, vert_count, bmesh_data)
 
 		# Build Faces
 		# GBFR Models can have duplicate faces, blender can't, so collect dupes to handle them properly
-		duplicate_face_indices = build_mesh_faces(mmesh_file, LOD, bm, face_count)
-		bm.to_mesh(mesh_data) # Update mesh
+		duplicate_face_indices = build_mesh_faces(mmesh_file, LOD, bmesh_data, face_count)
+		bmesh_data.to_mesh(mesh_data) # Update mesh
 
 		# Apply normals and uvs to faces
-		normals = build_mesh_normals_and_uvs(mesh_data, bm, NormalTable, UVTable)
-		bm.to_mesh(mesh_data) # Update mesh again
+		normals = build_mesh_normals_and_uvs(mesh_data, bmesh_data, NormalTable, UV0Table)
+		bmesh_data.to_mesh(mesh_data) # Update mesh again
 		mesh_data.uv_layers.active.name = "UV0"
 		mesh_data.normals_split_custom_set(normals) # Can't directly assign tangents in blender, so use this instead
 
@@ -431,10 +702,10 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 			dupe_face_count = len(duplicate_face_indices)
 		if dupe_face_start != -1:
 			print("dupe_face_start", dupe_face_start, "dupe_face_count", dupe_face_count)
-		print(f"len(bm.faces) = {len(bm.faces)}")
+		print(f"len(bm.faces) = {len(bmesh_data.faces)}")
 		
 		# Create and assign materials (chunks/submeshes)
-		build_mesh_materials(mesh_info, mesh_data, LOD, dupe_face_start, dupe_face_count)
+		build_mesh_materials(model_info, mesh_data, LOD, dupe_face_start, dupe_face_count)
 
 		# ========================================================================================
 		# Additional Buffers
@@ -453,16 +724,16 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 				
 				# Get weight to vertex group indices for each vertex
 				lod_buffers_index = buffer_type_flags.index('BLENDINDICES')
-				weight_indices_table = get_vertex_weight_indices(mmesh_file, LOD, deform_joints_table, weight_sets_count, lod_buffers_index)
+				WeightIndicesTable = get_vertex_weight_indices(mmesh_file, LOD, DeformBonesIndexTable, weight_sets_count, lod_buffers_index)
 				
 				# Get weight values for each vertex
 				lod_buffers_index = buffer_type_flags.index('BLENDWEIGHT')
-				weight_values_table = get_vertex_weight_values(mmesh_file, LOD, weight_sets_count, lod_buffers_index)
+				WeightValuesTable = get_vertex_weight_values(mmesh_file, LOD, weight_sets_count, lod_buffers_index)
 				
 				print("len(armature.data.bones)", len(armature.data.bones))
 				
 				# Build Vertex Groups and assign weights
-				build_vertex_groups(mesh_obj, armature, weight_indices_table, weight_values_table)
+				build_vertex_groups(mesh_obj, armature, WeightIndicesTable, WeightValuesTable)
 
 		# ========================================================================================
 		# Vertex Colors
@@ -518,36 +789,37 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 	
 	# Store extra parameters in root_object object
 	# =====================
-	root_object["magic"] = mesh_info.Magic() # Add minfo magic number
-	root_object["lod_screen_size_thresholds"] = mesh_info.LodScreenSizeThresholdsAsNumpy() # LOD Distance parameters list
-	root_object["bounding_sphere"] = (mesh_info.BoundingSphere().X(), mesh_info.BoundingSphere().Y(), mesh_info.BoundingSphere().Z(), mesh_info.BoundingSphere().R())
-	if mesh_info.BgReactionData():
+	root_object["magic"] = model_info.Magic() # Add minfo magic number
+	root_object["lod_screen_size_thresholds"] = model_info.LodScreenSizeThresholdsAsNumpy() # LOD Distance parameters list
+	root_object["bounding_sphere"] = (model_info.BoundingSphere().X(), model_info.BoundingSphere().Y(), model_info.BoundingSphere().Z(), model_info.BoundingSphere().R())
+	if model_info.BgReactionData():
 		root_object["bg_reaction_data"] = {
-			"hit_height": mesh_info.BgReactionData().HitHeight(0.0),
-			"hit_radius": mesh_info.BgReactionData().HitRadius(0.0),
-			"particle_type": mesh_info.BgReactionData().ParticleType(),
-			"play_sound": mesh_info.BgReactionData().PlaySound()
+			"hit_height": model_info.BgReactionData().HitHeight(),
+			"hit_radius": model_info.BgReactionData().HitRadius(),
+			"particle_type": model_info.BgReactionData().ParticleType(),
+			"play_sound": model_info.BgReactionData().PlaySound()
 			}
-	root_object["vec3_11"] = (mesh_info.Vec311().X(), mesh_info.Vec311().Y(), mesh_info.Vec311().Z())
-	root_object["near_camera_bound_radius"] = mesh_info.NearCameraBoundRadius()
-	root_object["near_camera_detection_scale"] = mesh_info.NearCameraDetectionScale()
-	root_object["fade_out_distance"] = mesh_info.FadeOutDistance()
+	root_object["vec3_11"] = (model_info.Vec311().X(), model_info.Vec311().Y(), model_info.Vec311().Z())
+	root_object["near_camera_bound_radius"] = model_info.NearCameraBoundRadius()
+	root_object["near_camera_detection_scale"] = model_info.NearCameraDetectionScale()
+	root_object["fade_out_distance"] = model_info.FadeOutDistance()
 	for i in [15, 16, 17, 18, 19]: # F12 - F20 attributes
-		if getattr(mesh_info, f"F{i}")():
-			root_object[f"f{i}"] = getattr(mesh_info, f"F{i}")() # root_object["F15"] = mesh_info.F15()
-	if mesh_info.U20(): 	root_object["u20"] = str(mesh_info.U20()) # Python only supports int32, not uint32, so store as string
-	if mesh_info.Byte21(): 	root_object["byte21"] = byte_to_bool_array(mesh_info.Byte21())
-	if mesh_info.SceneGraphMode(): 	root_object["scene_graph_mode"] = byte_to_bool_array(mesh_info.SceneGraphMode())
-	if mesh_info.UseSceneGraphCache(): 	root_object["use_scene_graph_cache"] = mesh_info.UseSceneGraphCache()
-	if mesh_info.IsShip(): 	root_object["is_ship"] = mesh_info.IsShip()
-	if mesh_info.UseBoneBoundsForFade(): 	root_object["use_bone_bounds_for_fade"] = mesh_info.UseBoneBoundsForFade()
-	if mesh_info.ForceNearFadeEvaluation(): 	root_object["force_near_fade_evaluation"] = mesh_info.ForceNearFadeEvaluation()
-	if mesh_info.UseMeshAabbForFade(): 	root_object["use_mesh_aabb_for_fade"] = mesh_info.UseMeshAabbForFade()
-	if mesh_info.RenderFlags(): 	root_object["render_flags"] = byte_to_bool_array(mesh_info.RenderFlags())
-	for i in [24, 26, 28, 29, 31]:
-		if getattr(mesh_info, f"Bool{i}")():
-			root_object[f"bool{i}"] = getattr(mesh_info, f"Bool{i}")() # root_object["Bool23"] = mesh_info.Bool23()
-	if mesh_info.CameraNearFadeAabbRadius(): root_object["camera_near_fade_aabb_radius"] = mesh_info.CameraNearFadeAabbRadius()
+		if getattr(model_info, f"F{i}")():
+			root_object[f"f{i}"] = getattr(model_info, f"F{i}")() # root_object["F15"] = mesh_info.F15()
+	if model_info.U20(): 	root_object["u20"] = str(model_info.U20()) # Python only supports int32, not uint32, so store as string
+	if model_info.Byte21(): 	root_object["byte21"] = byte_to_bool_array(model_info.Byte21())
+	if model_info.SceneGraphMode(): 	root_object["scene_graph_mode"] = byte_to_bool_array(model_info.SceneGraphMode())
+	if model_info.UseSceneGraphCache(): 	root_object["use_scene_graph_cache"] = model_info.UseSceneGraphCache()
+	if model_info.IsShip(): 	root_object["is_ship"] = model_info.IsShip()
+	if model_info.UseBoneBoundsForFade(): 	root_object["use_bone_bounds_for_fade"] = model_info.UseBoneBoundsForFade()
+	if model_info.ForceNearFadeEvaluation(): 	root_object["force_near_fade_evaluation"] = model_info.ForceNearFadeEvaluation()
+	if model_info.UseMeshAabbForFade(): 	root_object["use_mesh_aabb_for_fade"] = model_info.UseMeshAabbForFade()
+	if model_info.RenderFlags(): 	root_object["render_flags"] = byte_to_bool_array(model_info.RenderFlags())
+	for i in [24, 26, 28, 29]:
+		if getattr(model_info, f"Bool{i}")():
+			root_object[f"bool{i}"] = getattr(model_info, f"Bool{i}")() # root_object["bool23"] = mesh_info.Bool23()
+	if model_info.Bool31():		root_object["bool31"] = byte_to_bool_array(model_info.Bool31()) # Is actually byte
+	if model_info.CameraNearFadeAabbRadius(): root_object["camera_near_fade_aabb_radius"] = model_info.CameraNearFadeAabbRadius()
 	
 	# Clean Up
 	# =====================
