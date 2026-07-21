@@ -24,7 +24,7 @@
   1. Extract/Locate the model's `.minfo` file (plus the `.skeleton` file if it has one) from the model folder, and the `.mmesh` files from each `model_streaming/lod#` folder.
 > [!IMPORTANT]
 > You can extract models and other files from Granblue Fantasy: Relink using [GBFRDataTools](https://github.com/Nenkai/GBFRDataTools/releases).
-> To learn how to extract models go to: [Granblue Fantasy - Relink Modding](https://nenkai.github.io/relink-modding/tutorials/file_extraction/)
+> To learn how to extract files go to: [Granblue Fantasy - Relink Modding](https://nenkai.github.io/relink-modding/tutorials/file_extraction/)
   2. Go to `File > Import > Granblue Fantasy Relink (.minfo)`
   3. Drag in the model's `.minfo` file and press the `Select .minfo` button.
   4. You will then be prompted to locate and enter the `model_streaming` folder where the `lod#` & `shadowlod#` folders are.
