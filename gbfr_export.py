@@ -110,7 +110,8 @@ def build_skeleton(armature_obj):
 
 	return skeleton_builder.Output(), DeformJointsTable
 
-def build_mesh_vert_dictionary(mesh_obj, mesh_data):
+def build_mesh_vert_dictionary(mesh_data):
+	uv_data = mesh_data.uv_layers.active.data
 	mesh_vert_table = {}
 	
 	for face in mesh_data.polygons:
@@ -126,7 +127,7 @@ def build_mesh_vert_dictionary(mesh_obj, mesh_data):
 			vert_buffer.append(b'\x00')
 			vert_buffer.append(struct.pack('<eee', loop.tangent[0], loop.tangent[1], loop.tangent[2]))
 			vert_buffer.append(struct.pack('<e', -loop.bitangent_sign))
-			uv = mesh_obj.data.uv_layers.active.data[loop_id].uv
+			uv = uv_data[loop_id].uv
 			vert_buffer.append(struct.pack('<ee', uv[0], uv[1]))
 			
 			mesh_vert_table[vert_id] = vert_buffer
@@ -336,7 +337,7 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 				mesh_name = mesh_obj.name.split('.')[0]
 				
 				# Build the Vertex Table
-				mesh_vert_dict = build_mesh_vert_dictionary(mesh_obj, mesh_data)
+				mesh_vert_dict = build_mesh_vert_dictionary(mesh_data)
 				vert_table.extend(list(mesh_vert_dict.values()))
 
 				print(f"4a. Elapsed time: {time.perf_counter() - export_section_timer_start:.6f} seconds | LOD{lod_obj_index}_{mesh_obj.name} - Build Vertex Table")
