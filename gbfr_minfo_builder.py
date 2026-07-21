@@ -242,6 +242,7 @@ def build_minfo(minfo_data:dict, filepath:str):
 											   y=minfo_data["bounding_sphere"][1], 
 											   z=minfo_data["bounding_sphere"][2], 
 											   r=minfo_data["bounding_sphere"][3]))
+	# TODO: IMPLEMENT
 	#if "bg_reaction_data" in minfo_data:
 	#  MInfo.AddBgReactionData(minfo_builder, )
 	MInfo.AddVec311(minfo_builder, Vec3.CreateVec3(minfo_builder, 
@@ -280,7 +281,7 @@ def build_minfo(minfo_data:dict, filepath:str):
 		MInfo.AddBool31(minfo_builder, minfo_data["bool31"])
 	if "use_mesh_aabb_for_fade" in minfo_data: 
 		MInfo.AddUseMeshAabbForFade(minfo_builder, minfo_data["use_mesh_aabb_for_fade"])
-	if "render_flags" in minfo_data: 
+	if "render_flags" in minfo_data:
 		MInfo.AddRenderFlags(minfo_builder, minfo_data["render_flags"])
 	if "camera_near_fade_aabb_radius" in minfo_data: 
 		MInfo.AddCameraNearFadeAabbRadius(minfo_builder, minfo_data["camera_near_fade_aabb_radius"])
