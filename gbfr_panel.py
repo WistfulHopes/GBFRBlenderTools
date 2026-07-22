@@ -9,7 +9,32 @@ DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 ICONS_PATH = os.path.join(DIR_PATH, "icons")
 PCOLL = None
 preview_collections = {}
-curr_game_magic = utils_get_magic()
+
+
+# Define the panel class
+class GBFRToolPanel_ImportExport(bpy.types.Panel):
+	"""Creates a custom panel in the Object properties editor"""
+	bl_label = "Import/Export"
+	bl_idname = "VIEW3D_PT_GBFR_Tools_Panel_Import_Export"
+	bl_space_type = 'VIEW_3D'
+	bl_region_type = 'UI'
+	bl_category = "GBFR"
+
+	def draw(self, context):
+		layout = self.layout
+		box = layout.box()
+
+		row = box.row(align=True) ; row.scale_y = 0.5
+		row.label(text="Import:", icon="FILE_FOLDER")
+		row = box.row(align=True) ; row.scale_y = 1.5
+		button = row.operator("gbfr.import_mesh", text='Import GBFR Model', icon='IMPORT')
+
+		row = box.row() ; row.scale_y = 0.5
+		row.label(text="Export:", icon='FILE_FOLDER')
+		row = box.row() ; row.scale_y = 1.5
+		button = row.operator("gbfr.export_mesh", text='Export GBFR Model', icon='EXPORT')
+
+		# ----------------------------
 
 # Define the panel class
 class GBFRToolPanel_Fixes(bpy.types.Panel):
@@ -40,8 +65,17 @@ class GBFRToolPanel_Fixes(bpy.types.Panel):
 		# row = box.row() ; row.scale_y = 0.5
 		row = box.row() ; row.scale_y = 0.5
 		row.label(text="Mesh Clean Up:", icon='MESH_DATA')
+		col = box.column(align=True)
+		row = col.row()
+		row.label(text = "Normalize & Limit Vertex Weights to:", icon="MOD_VERTEX_WEIGHT")
+		row = col.row(align=True) ; row.scale_y = 1.4
+		button_1 = row.operator("mesh.limit_and_normalize_weights", icon='GROUP_VERTEX', text = "4 Total Groups")
+		button_1.limit_number = 4
+		# row = col.row() ; row.scale_y = 1.4
+		button_2 = row.operator("mesh.limit_and_normalize_weights", icon='GROUP_VERTEX', text = "8 Total Groups")
+		button_2.limit_number = 8
 		row = box.row() ; row.scale_y = 1.5
-		button = row.operator("mesh.limit_and_normalize_weights", icon='MESH_DATA')
+		button = row.operator("mesh.remove_unused_vertex_groups", icon='GROUP_VERTEX')
 		row = box.row() ; row.scale_y = 1.5
 		button = row.operator("mesh.delete_loose_edges_and_verts", icon = "MESH_DATA")
 
@@ -63,31 +97,33 @@ class GBFRToolPanel_Utilities(bpy.types.Panel):
 		box.label(text="Armature:", icon='ARMATURE_DATA')
 		row = box.row() ; row.scale_y = 0.5	
 		row.label(text="Translate Bones To:", icon="BONE_DATA")
+		row = box.row() ; row.scale_y = 0.5
+		row.label(text="Only use on humanoid models! Names are just approximates!", icon="ERROR")
 		
 		row = box.row(align=True) ; row.scale_y = 1.5
-		button = row.operator("armature.translate_bones_to_unity_blender", icon='NONE')
-		button = row.operator("armature.translate_bones_to_gbfr", icon='NONE')
+		row.operator("armature.translate_bones_to_unity_blender", icon='NONE')
+		row.operator("armature.translate_bones_to_gbfr", icon='NONE')
 
 		# Mesh
 		box.label(text="Mesh:", icon='MESH_DATA')
 		
 		col = box.column(align=True)
 		row = col.row() ; row.scale_y = 1.4
-		button = row.operator("mesh.separate_by_material", icon='MESH_DATA')
+		row.operator("mesh.separate_by_material", icon='MESH_DATA')
 		
 		row = col.row() ; row.scale_y = 1.4
-		button = row.operator("mesh.join_all_meshes", icon='MESH_DATA')
+		row.operator("mesh.join_all_meshes", icon='MESH_DATA')
 		
 		row = box.row()
-		button = row.operator("mesh.select_0_weight_vertices", icon='MESH_DATA')
+		row.operator("mesh.select_0_weight_vertices", icon='MESH_DATA')
 		
 		row = box.row()
-		button = row.operator("mesh.flip_normals", icon='MESH_DATA')
+		row.operator("mesh.flip_normals", icon='MESH_DATA')
 		
 		row = box.row()
-		button = row.operator("mesh.remove_doubles", text="Remove Doubles", icon='MESH_DATA')
-		button.use_unselected = True
-		button.threshold = 0.000001 # Use this threshold or all hell breaks loose
+		remove_doubles_button = row.operator("mesh.remove_doubles", text="Remove Doubles", icon='MESH_DATA')
+		remove_doubles_button.use_unselected = True
+		remove_doubles_button.threshold = 0.000001 # Use this threshold or all hell breaks loose
 
 
 class GBFRToolPanel_Materials(bpy.types.Panel):
@@ -133,6 +169,8 @@ class GBFRToolPanel_Materials(bpy.types.Panel):
 			row = box.row(align=False)
 			row.label(text = "Select a mesh to configure materials.", icon = "ERROR")
 
+
+
 class GBFRToolPanel_Advanced(bpy.types.Panel):
 	bl_label = "Advanced"
 	bl_idname = "VIEW3D_PT_GBFR_Tools_Panel_Advanced"
@@ -146,27 +184,120 @@ class GBFRToolPanel_Advanced(bpy.types.Panel):
 		box = layout.box()
 		col = box.column(align=True)
 		obj = context.object
-		if obj and obj.type != 'ARMATURE':
-			if obj.parent.type == 'ARMATURE':
+		if obj and (obj.type != 'ARMATURE' and obj.type != 'EMPTY'):
+			if obj.parent.type == 'ARMATURE' or obj.parent.type == 'EMPTY':
 				obj = obj.parent
-		armature = obj
-		if armature and armature.type == 'ARMATURE':
-			row = col.row(align=False)
-			row.label(text = f".minfo Magic Number:", icon="SHADERFX")
-			row = col.row(align=False)
-			row.label(text = f"Only edit this if game's Magic Number has changed!", icon="ERROR")
-			row = col.row(align=False)
-			magic = armature.get("Magic", None)
+		root_obj = obj
+		if root_obj.type == 'ARMATURE' or root_obj.type == 'EMPTY':
+			# Magic - unused now
+			# row = col.row(align=False)
+			# row.label(text = f".minfo Magic Number:", icon="SHADERFX")
+			# row = col.row(align=False)
+			# magic = root_obj.get("magic", None)
+			# if magic != None:
+			# 	# if curr_game_magic > magic: row.alert = True # Highlight if model's version is older
+			# 	row.prop(root_obj, '["magic"]', text="")
+			# else:
+			# 	row.alert = True
+			# 	row.operator("root.add_magic_number")
+			# row = col.row(align=False) ; row.scale_y = 0.75
+
+			# LOD Screen Sizes
+			lod_screen_size_thresholds = root_obj.get("lod_screen_size_thresholds", None)
+			if lod_screen_size_thresholds != None:
+				row = col.row()
+				row.label(text = f"LOD Screen Size Thresholds:", icon="MOD_DECIM")
+				row = col.row()
+				row.prop(root_obj, '["lod_screen_size_thresholds"]', text="")
+
+			# Fade between lods
+			fade_between_lods = root_obj.get("fade_between_lods", None)
+			if fade_between_lods != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Fade between LODs:", icon = "OUTLINER_DATA_LIGHTPROBE")
+				row.prop(root_obj, '["fade_between_lods"]', text="")
+
+			row = col.row() ; row.scale_y = 0.5 ; row.label()
 			
-			if magic != None:
-				if curr_game_magic > magic: row.alert = True # Highlight if model's version is older
-				row.prop(armature, '["Magic"]', text="")
-			else:
-				row.alert = True
-				row.operator("armature.add_magic_number")
-			row = col.row(align=False) ; row.scale_y = 0.75
-			row.label(text = f"Game's current .minfo magic: {curr_game_magic}", icon="INFO")
+			# near_camera_bound_radius
+			near_camera_bound_radius = root_obj.get("near_camera_bound_radius", None)
+			if near_camera_bound_radius != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Near Camera Bound Radius:")
+				row.prop(root_obj, '["near_camera_bound_radius"]', text="")
+
+			# near_camera_detection_scale
+			near_camera_detection_scale = root_obj.get("near_camera_detection_scale", None)
+			if near_camera_detection_scale != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Near Camera Detection Scale:")
+				row.prop(root_obj, '["near_camera_detection_scale"]', text="")
+
+			# fade_out_distance
+			fade_out_distance = root_obj.get("fade_out_distance", None)
+			if fade_out_distance != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Fade Out Distance:")
+				row.prop(root_obj, '["fade_out_distance"]', text="")
+
+			# use_bone_bounds_for_fade
+			use_bone_bounds_for_fade = root_obj.get("use_bone_bounds_for_fade", None)
+			if use_bone_bounds_for_fade != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Use Bone Bounds for Fade:")
+				row.prop(root_obj, '["use_bone_bounds_for_fade"]', text="")
+
+			# use_mesh_aabb_for_fade
+			use_mesh_aabb_for_fade = root_obj.get("use_mesh_aabb_for_fade", None)
+			if use_mesh_aabb_for_fade != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Use Mesh aabb for Fade:")
+				row.prop(root_obj, '["use_mesh_aabb_for_fade"]', text="")
+
+			# camera_near_fade_aabb_radius
+			camera_near_fade_aabb_radius = root_obj.get("camera_near_fade_aabb_radius", None)
+			if camera_near_fade_aabb_radius != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Camera Near Fade aabb Radius:")
+				row.prop(root_obj, '["camera_near_fade_aabb_radius"]', text="")
+
+			# force_near_fade_evaluation
+			force_near_fade_evaluation = root_obj.get("force_near_fade_evaluation", None)
+			if force_near_fade_evaluation != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Force Near Fade Evaluation:")
+				row.prop(root_obj, '["force_near_fade_evaluation"]', text="")
+
+			row = col.row(align=True) ; row.scale_y = 0.75 ; row.label()
+			row = col.row()
+			row.label(text = f"Minimum Screen % Render Thresholds", icon = "FULLSCREEN_ENTER")
+			row = col.row() ; box = row.box() ; box.scale_y = 0.5
+			# box.enabled = False
+			box.label(text = f"The minimum vertical size percentages on", icon = "INFO")
+			box.label(text = f"screen parts of the model must take up to render.")
+			row = col.row() ; row.label() ; row.scale_y = 0.2
+
+			# render_mesh_screen_size_threshold
+			render_mesh_screen_size_threshold = root_obj.get("render_mesh_screen_size_threshold", None)
+			if render_mesh_screen_size_threshold != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Min. Mesh Screen Size:", icon = "SNAP_VOLUME")
+				row.prop(root_obj, '["render_mesh_screen_size_threshold"]', text="")
 			
+			# render_shadow_screen_size_threshold
+			render_shadow_screen_size_threshold = root_obj.get("render_shadow_screen_size_threshold", None)
+			if render_shadow_screen_size_threshold != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Min. Shadow Screen Size:", icon = "LIGHT_SUN")
+				row.prop(root_obj, '["render_shadow_screen_size_threshold"]', text="")
+			
+			# render_outline_screen_size_threshold
+			render_outline_screen_size_threshold = root_obj.get("render_outline_screen_size_threshold", None)
+			if render_outline_screen_size_threshold != None:
+				row = col.row(align=False) ; row = row.split(factor = 0.7)
+				row.label(text = f"Min. Outline Screen Size:", icon = "MESH_CUBE")
+				row.prop(root_obj, '["render_outline_screen_size_threshold"]', text="")
+
 
 
 class GBFRToolPanel_Credits(bpy.types.Panel):
@@ -188,13 +319,12 @@ class GBFRToolPanel_Credits(bpy.types.Panel):
 		row = col.row(align=False) ; row.scale_y = 0.75
 		row.label(text = "Created by:")
 		row = col.row(align=False) ; row.scale_y = 0.75
-		row.label(text = "WistfulHopes & AlphaSatanOmega")
+		row.label(text = "AlphaSatanOmega & WistfulHopes")
 		col.separator()
 		row = col.row(align=False) ; row.scale_y = 0.75
 		row.label(text = "Special thanks:")
 		row = col.row(align=False) ; row.scale_y = 0.75
-		row.label(text = "WolfieBeat, bujyu-uo, rurires")
-		#TODO: Add discord and github button
+		row.label(text = "Nenkai, WolfieBeat, bujyu-uo, rurires")
 		col.separator()
 		row = col.row() ; row.scale_y = 1.4
 		button = row.operator("gbfr.discord", icon_value=preview_collections["icons"]["discord"].icon_id)
@@ -206,6 +336,10 @@ class GBFRToolPanel_Credits(bpy.types.Panel):
 		col.separator()
 		row = col.row(align=False) ; row.scale_y = 0.75
 		row.label(text = "KEEP IT CLEAN!", icon_value=preview_collections["icons"]["KEEPITCLEAN"].icon_id)
+
+
+
+
 
 
 
@@ -240,7 +374,7 @@ class ButtonAddMaterialIndex(bpy.types.Operator):
 		return {'FINISHED'}
 
 class ButtonAddMagicNumber(bpy.types.Operator):
-	bl_idname = "armature.add_magic_number"
+	bl_idname = "root.add_magic_number"
 	bl_label = "Add Magic Number"
 	bl_description = "Add GBFR's Magic file number to the model"
 	bl_options = {'REGISTER', 'UNDO'}
@@ -252,15 +386,16 @@ class ButtonAddMagicNumber(bpy.types.Operator):
 	def execute(self, context):
 		try:
 			obj = context.object
-			if obj.type != 'ARMATURE':
-				if obj.parent.type == 'ARMATURE': obj = obj.parent
-			if obj.type == 'ARMATURE':
+			if obj.type != 'ARMATURE' and obj.type != 'EMPTY':
+				if obj.parent.type == 'ARMATURE' or obj.parent.type == 'EMPTY':
+					obj = obj.parent
+			if obj.type == 'ARMATURE' or obj.type == 'EMPTY':
 				magic = utils_get_magic()
-				obj["Magic"] = magic
+				obj["magic"] = magic
 				# Set up property
 				obj.id_properties_ensure() # ensure manager is updated
-				prop_manager = obj.id_properties_ui("Magic")
-				prop_manager.update(min=0, max=100000000, default = magic)
+				prop_manager = obj.id_properties_ui("magic")
+				prop_manager.update(min=0, max=100000101, default = magic)
 		except Exception as err:
 			raise Exception(f"{err}")
 		return {'FINISHED'}
@@ -373,7 +508,12 @@ class ButtonSeparateByMaterial(bpy.types.Operator):
 
 	def execute(self, context):
 		try:
-			utils_separate_by_materials(context)
+			selected_objects = context.selected_objects
+			[obj.select_set(False) for obj in selected_objects if obj.type == "MESH"]
+			for obj in selected_objects:
+				obj.select_set(True)
+				utils_separate_by_materials(context, obj)
+				obj.select_set(False)
 			self.report({'INFO'}, f"Separated by Materials!")
 		except Exception as err:
 			print(f"{err}")
@@ -412,7 +552,7 @@ class ButtonJoinAllMeshes(bpy.types.Operator):
 	@classmethod
 	def poll(cls, context):
 		return (context.active_object is not None and
-				(context.active_object.type == 'MESH' or context.active_object.type == 'ARMATURE'))
+				(context.active_object.type == 'MESH' or (context.active_object.type == 'ARMATURE' or context.active_object.type == 'EMPTY')))
 
 	def execute(self, context):
 		try:
@@ -450,9 +590,11 @@ class ButtonSelect0WeightVertices(bpy.types.Operator):
 
 class ButtonLimitAndNormalizeAllWeights(bpy.types.Operator):
 	bl_idname = "mesh.limit_and_normalize_weights"
-	bl_label = "Limit & Normalize Weights"
+	bl_label = "Limit & Normalize Vertex Weights"
 	bl_options = {'REGISTER', 'UNDO'}
-	bl_description = "Limits the weights of all vertices on the mesh to 4 vertex groups, and normalizes them."
+	bl_description = "Normalizes and Limits the weights of all vertices on the mesh to 4/8 vertex groups."
+
+	limit_number: bpy.props.IntProperty(default=8)
 
 	@classmethod
 	def poll(cls, context):
@@ -462,12 +604,49 @@ class ButtonLimitAndNormalizeAllWeights(bpy.types.Operator):
 	def execute(self, context):
 		try:
 			mesh = context.active_object
-			utils_limit_and_normalize_weights(mesh)
-			self.report({'INFO'}, f"Weights normalized and limited to 4 groups per vetex.")
+			utils_limit_and_normalize_weights(mesh, limit_number=self.limit_number)
+			self.report({'INFO'}, f"Vertex Weights normalized and limited to {self.limit_number} groups per vetex.")
 		except Exception as err:
 			print(f"{err}")
 			raise Exception(f"{err}")
 			pass
+		return {'FINISHED'}
+
+class RemoveUnusedVertexGroups(bpy.types.Operator):
+	"""Remove all unused vertex groups."""
+	bl_idname = "mesh.remove_unused_vertex_groups"
+	bl_label = "Remove Unused Vertex Groups"
+	bl_options = {'REGISTER', 'UNDO'}
+
+	@classmethod
+	def poll(cls, context):
+		return (context.active_object is not None and
+				context.active_object.type == 'MESH')
+
+	def execute(self, context):
+		obj = context.object
+
+		armature_mod = None
+		for modifier in obj.modifiers:
+			if modifier.type == 'ARMATURE' and modifier.object:
+				armature_mod = modifier.object
+				break
+
+		if armature_mod is None:
+			self.report({'ERROR'}, "Mesh has no Armature modifier")
+			return {'CANCELLED'}
+
+		existing_bones = {bone.name for bone in armature_mod.data.bones}
+
+		removed_count = 0
+		# Iterate backwards through vertex groups
+		for vg in reversed(obj.vertex_groups):
+			if vg.name not in existing_bones:
+				print(f"Removed Vertex Group: {vg.name}")
+				obj.vertex_groups.remove(vg)
+				removed_count += 1
+
+		self.report({'INFO'}, f"Removed {removed_count} unused vertex groups!")
 		return {'FINISHED'}
 
 class ButtonDiscord(bpy.types.Operator):
@@ -499,10 +678,12 @@ class ButtonGitHub(bpy.types.Operator):
 	
 
 
-classes = [GBFRToolPanel_Fixes, GBFRToolPanel_Utilities, GBFRToolPanel_Materials, GBFRToolPanel_Advanced, GBFRToolPanel_Credits,
+classes = [GBFRToolPanel_ImportExport, GBFRToolPanel_Fixes, GBFRToolPanel_Utilities, GBFRToolPanel_Materials, 
+			GBFRToolPanel_Advanced, GBFRToolPanel_Credits,
 			ButtonSplitMeshAlongUVs, ButtonTranslateBonesToGBFR, ButtonTranslateBonesToUnityBlender, 
 			ButtonSeparateByMaterial, ButtonSortMaterials, ButtonJoinAllMeshes, ButtonSelect0WeightVertices, 
-			ButtonLimitAndNormalizeAllWeights, ButtonDeleteLooseGeometry, ButtonAddMaterialIndex, ButtonAddMagicNumber,
+			ButtonLimitAndNormalizeAllWeights, RemoveUnusedVertexGroups, ButtonDeleteLooseGeometry, 
+			ButtonAddMaterialIndex, ButtonAddMagicNumber,
 			ButtonDiscord, ButtonWebsite, ButtonGitHub
 			]
 

@@ -2,8 +2,8 @@
 
 # namespace: Entities
 
-from .flatbuffers import *
-from .flatbuffers.compat import import_numpy
+from .. import flatbuffers
+from ..flatbuffers.compat import import_numpy
 np = import_numpy()
 
 class BoundaryBox(object):
@@ -15,7 +15,7 @@ class BoundaryBox(object):
 
     # BoundaryBox
     def Init(self, buf, pos):
-        self._tab = table.Table(buf, pos)
+        self._tab = flatbuffers.table.Table(buf, pos)
 
     # BoundaryBox
     def Min(self, obj):

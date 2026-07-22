@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Granblue Fantasy Relink Blender Tools",
-    "author": "WistfulHopes & AlphaSatanOmega",
-    "version": (1, 1, 0),
+    "author": "AlphaSatanOmega & WistfulHopes",
+    "version": (2, 0, 0),
     "blender": (4, 0, 0),
     "location": "File > Import/Export | View 3D > Tool Shelf > GBFR",
     "description": "Tool to import & export models from Granblue Fantasy Relink",
@@ -9,6 +9,13 @@ bl_info = {
     "category": "Import-Export",
     "doc_url": "https://github.com/WistfulHopes/GBFRBlenderTools?tab=readme-ov-file#gbfr-blender-tools"
 }
+
+import bpy
+import bmesh
+import mathutils
+import struct
+import os
+from . import gbfr_import, gbfr_export, gbfr_panel, utils, gbfr_minfo_builder, bone_name_mappings
 
 # Reloads the addons on script reload
 # Good for editing script
@@ -22,15 +29,10 @@ if "bpy" in locals():
         importlib.reload(gbfr_panel)
     if "utils" in locals():
         importlib.reload(utils)
-
-import bpy
-import bmesh
-import mathutils
-import struct
-import os
-from . import gbfr_import, gbfr_export, gbfr_panel, utils
-from .Entities.ModelInfo import ModelInfo
-# from .Entities.ModelSkeleton import ModelSkeleton
+    if "gbfr_minfo_builder" in locals():
+        importlib.reload(gbfr_minfo_builder)
+    if "bone_name_mappings" in locals():
+        importlib.reload(bone_name_mappings)
 
 # ImportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
@@ -38,20 +40,20 @@ from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 
-# Addon preferences, where users will specify flatc.exe path
+# Addon preferences
 class AddonPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
-    
-    # Define a custom property for storing the flatc file path
-    flatc_file_path: StringProperty(
-        name="flatc.exe filepath",
-        description="File path to flatc.exe be used for export.",
-        subtype='FILE_PATH',
+
+    # Define a custom property for storing the extracted game data folder path
+    extracted_game_data_folder_path: StringProperty(
+        name="Extracted Game Data Folder Path",
+        description="Path to the folder where you extracted the game files with GBFRDataTools.",
+        subtype='DIR_PATH'
     )
     
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "flatc_file_path")
+        layout.prop(self, "extracted_game_data_folder_path")
 
 
 # Register importer & exporter

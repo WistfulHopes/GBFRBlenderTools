@@ -2,8 +2,8 @@
 
 # namespace: Entities
 
-from . import flatbuffers
-from .flatbuffers.compat import import_numpy
+from .. import flatbuffers
+from ..flatbuffers.compat import import_numpy
 np = import_numpy()
 
 class Vec3(object):
