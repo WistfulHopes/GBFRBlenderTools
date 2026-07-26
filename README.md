@@ -7,7 +7,6 @@
 
 # Requirements
 * [Blender (3.5 or Higher)](https://www.blender.org/download/)
-* [FlatBuffers - Windows.flatc.binary.zip](https://github.com/google/flatbuffers/releases)
 
 # Installation
 1. To import the models into blender you need to download and install the [`io_gbfr_blender_tools.zip`](https://github.com/WistfulHopes/GBFRBlenderTools/releases) file.
@@ -15,7 +14,7 @@
 3. Go to the `Add-ons` tab and hit `Install...` in the top right.
 4. Drag in the `io_gbfr_blender_tools.zip` file and install it.
 5. Toggle on the checkbox for the addon.
-  5a. In the addon's prefences, set the filepath to the folder where you extracted the game's data to.
+  5a. (Optional) In the addon's prefences, set the filepath to the folder where you extracted the game's data to.
 6. Close preferences.
 
 ---
