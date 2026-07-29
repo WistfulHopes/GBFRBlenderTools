@@ -184,7 +184,9 @@ class GBFRToolPanel_Advanced(bpy.types.Panel):
 		box = layout.box()
 		col = box.column(align=True)
 		obj = context.object
-		if obj and (obj.type != 'ARMATURE' and obj.type != 'EMPTY'):
+		if not obj: return
+		if obj.type != 'ARMATURE' and obj.type != 'EMPTY':
+			if not obj.parent: return
 			if obj.parent.type == 'ARMATURE' or obj.parent.type == 'EMPTY':
 				obj = obj.parent
 		root_obj = obj

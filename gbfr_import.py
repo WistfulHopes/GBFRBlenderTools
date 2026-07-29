@@ -223,9 +223,9 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 	model_name = os.path.splitext(os.path.basename(minfo_filepath))[0] # Get model name from filename
 
 	model_collection = bpy.data.collections.new(f"GBFR Model Collection_{model_name}") # Create new collection
-	bpy.context.scene.collection.children.link(model_collection)
+	context.scene.collection.children.link(model_collection)
 	utils_set_mode('OBJECT')
-	for obj in bpy.context.selected_objects: 
+	for obj in context.selected_objects: 
 		obj.select_set(False) #Deselect everything
 	
 	model_info = parse_mesh_info_file(minfo_filepath) # Parse the mesh info
@@ -391,8 +391,8 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 
 			# Build Mesh Materials first
 			for mat_index, mat_data in enumerate(MaterialsTable):
-				mat_name = str(mat_data.UniqueNameHash())
-				mat = bpy.data.materials.get(mat_name) # Get material if it already exists
+				mat_name = str(mat_data.UniqueNameHash()) + f".{model_name}" # Unique to model so additional data isn't overwritten
+				mat = bpy.data.materials.get(mat_name) # Get material if it already exists 
 				if not mat:
 					mat = bpy.data.materials.new(name=mat_name)
 				if mat not in materials_list:
@@ -567,7 +567,7 @@ def read_some_data(context, minfo_filepath, mmesh_filepaths, import_scale = 1.0,
 	root_object.show_in_front = True # X-Ray view for root_object
 	utils_select_active(root_object)
 	
-	bpy.context.object.scale = (import_scale, import_scale, import_scale) # Scale the entire model
+	context.object.scale = (import_scale, import_scale, import_scale) # Scale the entire model
 	bpy.ops.object.transform_apply(location=True, rotation=True, scale=True) # Apply Transforms to model
 
 	for lod_obj in lod_objects: 
@@ -804,9 +804,9 @@ class SelectMMeshAuto(Operator, ImportHelper):
 		mmesh_dir = Path(MMESH_DIRECTORY)
 		mmesh_paths = []
 
-		log_flags = ("LOD0", "LOD1", "LOD2", "LOD3", "LOD4", "SHADOWLOD0", "SHADOWLOD1", "SHADOWLOD2")
+		lod_flags = ("LOD0", "LOD1", "LOD2", "LOD3", "LOD4", "SHADOWLOD0", "SHADOWLOD1", "SHADOWLOD2")
 		if any([self.LOD0, self.LOD1, self.LOD2, self.LOD3, self.LOD4, self.SHADOWLOD0, self.SHADOWLOD1, self.SHADOWLOD2]):
-			for flag in log_flags:
+			for flag in lod_flags:
 				if getattr(self, flag):
 					subdir = mmesh_dir / flag.lower() # f"lod{i}"
 					print("subdir", subdir)
@@ -840,6 +840,91 @@ class SelectMMeshAuto(Operator, ImportHelper):
 
 
 
+if bpy.app.version >= (4, 1, 0): # Drag n Drop only works in 4.1+
+	from bpy.types import FileHandler
+	from pathlib import Path
+
+	class DragAndDropActionMinfo(FileHandler):
+		bl_idname = "gbfr.minfo_file_dropped_action"
+		bl_label = ".minfo File Dropped"
+		bl_import_operator = "gbfr.import_dropped_minfo_file"
+		bl_file_extensions = ".minfo"
+
+		@classmethod
+		def poll_drop(cls, context):
+			addon_preferences = context.preferences.addons[__package__].preferences
+			model_streaming_path = os.path.join(
+				addon_preferences.extracted_game_data_folder_path, "model_streaming")
+			return context.area and context.area.type == 'VIEW_3D' #and os.path.exists(model_streaming_path)
+		
+	class ImportDroppedMinfo(Operator):
+		bl_idname = "gbfr.import_dropped_minfo_file"
+		bl_label = "Import Dropped .minfo File"
+
+		filepath: StringProperty(subtype='FILE_PATH')
+		model_streaming_directory: StringProperty(name = "model_streaming Folder", subtype='FILE_PATH')
+
+		LOD0: BoolProperty(default=True)
+		LOD1: BoolProperty(default=False)
+		LOD2: BoolProperty(default=False)
+		LOD3: BoolProperty(default=False)
+		LOD4: BoolProperty(default=False)
+		SHADOWLOD0: BoolProperty(default=False)
+		SHADOWLOD1: BoolProperty(default=False)
+		SHADOWLOD2: BoolProperty(default=False)
+
+		def invoke(self, context, event):
+			if not self.model_streaming_directory:
+				addon_preferences = context.preferences.addons[__package__].preferences
+				self.model_streaming_directory = os.path.join(
+					addon_preferences.extracted_game_data_folder_path, "model_streaming")
+			return context.window_manager.invoke_props_dialog(self)
+		
+		def draw(self, context):
+			layout = self.layout
+			layout.label(text="Model Streaming Folder:")
+			layout.prop(self, "model_streaming_directory", text="")
+			layout.separator()
+			layout.prop(self, "LOD0")
+			layout.prop(self, "LOD1")
+			layout.prop(self, "LOD2")
+			layout.prop(self, "LOD3")
+			layout.prop(self, "LOD4")
+			layout.prop(self, "SHADOWLOD0")
+			layout.prop(self, "SHADOWLOD1")
+			layout.prop(self, "SHADOWLOD2")
+		
+		def execute(self, context):
+			mmesh_paths = []
+			mmesh_name = os.path.splitext(os.path.basename(self.filepath))[0] + ".mmesh"
+
+			lod_flags = ("LOD0", "LOD1", "LOD2", "LOD3", "LOD4", "SHADOWLOD0", "SHADOWLOD1", "SHADOWLOD2")
+			if any([self.LOD0, self.LOD1, self.LOD2, self.LOD3, self.LOD4, self.SHADOWLOD0, self.SHADOWLOD1, self.SHADOWLOD2]):
+				for lod_flag in lod_flags:
+					if getattr(self, lod_flag):
+						subdir = Path(self.model_streaming_directory) / lod_flag.lower() # f"lod{i}"
+						print("subdir", subdir)
+						if subdir.is_dir():
+							try:
+								mmesh_path = next(subdir.glob(mmesh_name))
+								print("mmesh_path", mmesh_path)
+								mmesh_paths.append(str(mmesh_path.resolve()))
+							except StopIteration:
+								self.report({'WARNING'}, f"No .mmesh found in {subdir}")
+
+			if not mmesh_paths:
+				self.report({'WARNING'}, "No .mmesh files found")
+				return {'CANCELLED'}
+
+			read_some_data(context, self.filepath, mmesh_paths) # Run import process
+			self.report({'INFO'}, f"Model Imported!")
+
+			return {'FINISHED'}
+
+
+
+
+
 def menu_func_import(self, context):
 	self.layout.operator(SelectMInfo.bl_idname, text="Granblue Fantasy Relink (.minfo)")
 
@@ -851,6 +936,9 @@ def register():
 	bpy.utils.register_class(SelectMInfo)
 	bpy.utils.register_class(SelectMMesh)
 	bpy.utils.register_class(SelectMMeshAuto)
+	if bpy.app.version >= (4, 1, 0):
+		bpy.utils.register_class(DragAndDropActionMinfo)
+		bpy.utils.register_class(ImportDroppedMinfo)
 	bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 
@@ -860,4 +948,7 @@ def unregister():
 	bpy.utils.unregister_class(SelectMInfo)
 	bpy.utils.unregister_class(SelectMMesh)
 	bpy.utils.unregister_class(SelectMMeshAuto)
+	if bpy.app.version >= (4, 1, 0): 
+		bpy.utils.unregister_class(DragAndDropActionMinfo)
+		bpy.utils.unregister_class(ImportDroppedMinfo)
 	bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)

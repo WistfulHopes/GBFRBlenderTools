@@ -36,7 +36,7 @@ def bools_to_vertex_flags_sum(flags): # Map bools to bitmask
 	)
 
 def bool_array_to_byte(bool_array):
-    return sum((1 << i) for i, enabled in enumerate(bool_array) if enabled)
+	return sum((1 << i) for i, enabled in enumerate(bool_array) if enabled)
 
 def encode_bone_group_name(group_name): # Encode bone group name to 4-byte little-endian ASCII uint
 	encoded_group_name = group_name if group_name.startswith("_") else f"_{group_name}"
@@ -44,13 +44,14 @@ def encode_bone_group_name(group_name): # Encode bone group name to 4-byte littl
 	encoded_group_name = str(int.from_bytes(encoded_group_name.encode('ASCII'), 'little'))
 	return encoded_group_name
 
-def build_skeleton(armature_obj):
+def build_skeleton(armature_obj, vertex_group_names):
 	DeformJointsTable = []
 	BoneInfoTablesList = []
 	
 	skeleton_builder = Builder(0)
 	for n, bone in enumerate(armature_obj.data.bones):
-		DeformJointsTable.append(n) # TODO: Check that bone is assigned to a vertex group(?) Doesn't seem to matter
+		if bone.name in vertex_group_names: # Check that bone is assigned to a vertex group
+			DeformJointsTable.append(n)
 		
 		parent = bone.parent
 		if parent is None:
@@ -236,6 +237,13 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 			)
 		mesh_obj.select_set(False)
 
+	# Get a set of all Vertex Group names
+	vertex_group_names = {
+		vg.name
+		for mesh in mesh_objects
+		for vg in mesh.vertex_groups
+	}
+
 	print(f"2. Elapsed time: {time.perf_counter() - export_section_timer_start:.6f} seconds | Mesh Fixes part 2")
 	export_section_timer_start = time.perf_counter() # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -244,7 +252,14 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 	# ================================================
 	deform_bones_table = []
 	if armature_obj:
-		bone_name_to_index_dict = {bone.name: i for i, bone in enumerate(armature_obj.data.bones)}
+		deform_bone_name_to_index_dict = {} # {bone.name: i for i, bone in enumerate(armature_obj.data.bones) if bone.name in vertex_group_names}
+		deform_bone_index = 0 # Get dict of bones that actually deform the mesh in order of bone's hierarchy for deform bone list
+		for bone in armature_obj.data.bones:
+			if bone.name not in vertex_group_names: continue
+
+			deform_bone_name_to_index_dict[bone.name] = deform_bone_index
+			deform_bone_index += 1
+		
 		# Re-encode and rename all the bone groups back to 4-byte little-endian ASCII uints
 		# ================================================
 		bone_groups = armature_obj.data.collections if bpy.app.version >= (4, 0, 0) else armature_obj.pose.bone_groups
@@ -262,7 +277,7 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 
 		# Save skeleton_buffer output to .skeleton file
 		# ================================================
-		skeleton_buffer, deform_bones_table = build_skeleton(armature_obj)
+		skeleton_buffer, deform_bones_table = build_skeleton(armature_obj, vertex_group_names)
 		try:
 			# skeleton_file = open(os.path.splitext(filepath)[0] + ".skeleton", 'wb')
 			skeleton_file = open(os.path.join(model_path, model_name + ".skeleton"), 'wb')
@@ -286,7 +301,8 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 	mesh_names_list = []
 	mesh_bounds = {}
 	unique_materials_dict = {}
-	vertex_group_boundary_boxes = []
+	vertex_group_verts = defaultdict(list)
+	vertex_group_boundary_boxes_dict = {}
 
 	# For bounding sphere
 	model_bounding_sphere = []
@@ -313,6 +329,12 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 				"model_streaming" if create_model_subfolders else "", 
 				mmesh_folder_name, 
 				model_name + ".mmesh")
+			# TODO: Allow Exporting .mmesh files to same folder as .minfo(?)
+			# mmesh_path  = os.path.join(os.path.dirname(filepath), f"{model_name}_{lod_id}.mmesh")
+			# enum:
+			# 1. Into `lod#` subfolders
+			# 2. Into the same folder
+			# 3. Into `model_streaming/lod#` subfolders
 			os.makedirs(os.path.dirname(mmesh_path), exist_ok=True)
 			mmesh_file = open(mmesh_path, 'wb')
 
@@ -330,7 +352,6 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 			face_table_offset = 0 # Updates after each mesh
 			chunks_face_offset = 0 # Updates after each mesh
 
-			vertex_group_verts = defaultdict(list)
 			mesh_objects = lod_obj.children
 			for mesh_obj_index, mesh_obj in enumerate(mesh_objects):
 				mesh_data = mesh_obj.data
@@ -365,15 +386,13 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 					vertex_groups_length = len(mesh_obj.vertex_groups)
 					padding_value = struct.pack('<H', 0)
 					for v_index, v in enumerate(mesh_data.vertices):
-						# if v.index not in mesh_vert_dict:
-						# 	continue # Make sure we're only processing verts we're exporting
-
-						for n in range(weights_count): # Vertex Groups compiled as sets of 4 or 8
-							if n < len(v.groups): # Existing Groups
-								vgroup_index = v.groups[n].group
+						total_weight = 0
+						for g in range(weights_count): # Vertex Groups compiled as sets of 4 or 8
+							if g < len(v.groups): # Existing Groups
+								vgroup_index = v.groups[g].group
 								if vgroup_index > vertex_groups_length: continue # Skip invalid group index
 								group_name = mesh_obj.vertex_groups[vgroup_index].name
-								bone_index = bone_name_to_index_dict.get(group_name, None)
+								bone_index = deform_bone_name_to_index_dict.get(group_name, None)
 								if bone_index is None:
 									raise UserWarning(format_exception(
 										f"Missing bone for Vertex Group '{group_name}' on '{mesh_name}\n"\
@@ -381,8 +400,13 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 									))
 								
 								weight_group_index = struct.pack('<H', bone_index)
-								weight_group_value = struct.pack('<H', int(v.groups[n].weight * 65535))
-								if n<4:
+								weight_group_value = int(v.groups[g].weight * 65535)
+								total_weight += weight_group_value
+								if g == len(v.groups)-1: # Round off to 65535 to prevent wavy mesh in big scenes (i.e. Seedhollow)
+									weight_group_value += 65535 - total_weight
+									total_weight += 65535 - total_weight
+								weight_group_value = struct.pack('<H', weight_group_value)
+								if g<4:
 									weight_id_table.append(weight_group_index)
 									weight_table.append(weight_group_value)
 								else:
@@ -391,10 +415,10 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 								
 								# Get Vertex group vertices for bounding boxes
 								if lod_obj_index > 0: continue # Only calculate for first LOD processed.
-								vertex_group_verts[vgroup_index].append(mesh_world_matrix @ v.co)
+								vertex_group_verts[bone_index].append(mesh_world_matrix @ v.co)
 							else:
 								# Pad vertex's weight group list out to full 4 slots with 0's
-								if n<4:
+								if g<4:
 									weight_id_table.append(padding_value)
 									weight_table.append(padding_value)
 								else:
@@ -403,21 +427,19 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 
 					# Calculate Boundary Boxes for each Vertex Group
 					if lod_obj_index == 0: # Only calculate for first LOD processed.
-						for vg_index, vg_coords in sorted(vertex_group_verts.items()):
-							vertex_group_boundary_boxes.append(
-								{
-									"min": {
-										'x': min(v.x for v in vg_coords), 
-										'y': min(v.y for v in vg_coords), 
-										'z': min(v.z for v in vg_coords)
-										},
-									"max": {
-										'x': max(v.x for v in vg_coords), 
-										'y': max(v.y for v in vg_coords), 
-										'z': max(v.z for v in vg_coords)
-										}
-								}
-							)
+						for vg_bone_index, vg_coords in sorted(vertex_group_verts.items()):
+							vertex_group_boundary_boxes_dict[vg_bone_index] = {
+								"min": {
+									'x': min(v.x for v in vg_coords), 
+									'y': min(v.y for v in vg_coords), 
+									'z': min(v.z for v in vg_coords)
+									},
+								"max": {
+									'x': max(v.x for v in vg_coords), 
+									'y': max(v.y for v in vg_coords), 
+									'z': max(v.z for v in vg_coords)
+									}
+							}
 				# ======== End of Armature related stuff ========
 
 				print(f"4b. Elapsed time: {time.perf_counter() - export_section_timer_start:.6f} seconds | LOD{lod_obj_index}_{mesh_obj.name} - Build Weights")
@@ -488,9 +510,14 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 							"Please select the mesh and set it to a non-negative number in the GBFR Tool shelf panel.\n"\
 							"(Press N to open the tool shelf while your cursor is in the 3D view)")
 						)
-					
 					if material_id not in unique_materials_dict:
 						unique_materials_dict[material_id] = material
+				if len(mesh_data.materials) == 0:
+					raise UserWarning(format_exception(
+						f"{mesh_obj.name} has no materials!\n"\
+						"Meshes must have at least 1 material with a Material Index assigned in the GBFR Tool shelf panel.\n"\
+						"(Press N to open the tool shelf while your cursor is in the 3D view)"
+					))
 
 				# ================================================
 				# Construct faces, chunks, and meshes list
@@ -498,6 +525,7 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 					mesh_names_list.append(mesh_name)
 				# mesh_id = mesh_names_list.index(mesh_name)
 
+				
 				for face in mesh_data.polygons:
 					# Build face table, offset vertex indices with the length of the vert_table
 					face_table.append(
@@ -509,6 +537,7 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 							)
 						)
 
+					# TODO: Throw error for no material on face!
 					mat_index = face.material_index
 					material = mesh_data.materials[mat_index]
 					material_id = material["MaterialID"]
@@ -519,7 +548,7 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 							'offset': chunks_face_offset + (face.index * 3),
 							'count': 0,
 							'mesh_id': mesh_obj_index,
-							'material_id': material["MaterialID"],
+							'material_id': material_id,
 							'a5': 0,
 							'a6': 0
 						}
@@ -634,10 +663,10 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 	# Note: .mmat also have some hash, maybe for names, but are not the same as hash in .minfo
 	unique_materials_dict = dict(sorted(unique_materials_dict.items())) # Sort by material_ids
 	materials_table = [
-		{
-			"unique_name_hash": int(material.name) 
-							if int(material.name) 
-							else XXHash32Custom.Hash_string(material.name), # Hash the material name
+		{	# TODO: Fix name split properly
+			"unique_name_hash": int(material.name.split('.')[0])
+							if int(material.name.split('.')[0])
+							else XXHash32Custom.Hash_string(material.name.split('.')[0]), # Hash the material name
 			"material_flags": bool_array_to_byte(material['material_flags']) 
 							if 'material_flags' in material 
 							else bool_array_to_byte([False*8]) # Unknown ubyte material flags
@@ -653,7 +682,7 @@ def write_some_data(context, filepath, export_scale:float, create_model_subfolde
 		'meshes': meshes_table,
 		'materials': materials_table,
 		'deform_bone_to_bone_index_table': deform_bones_table,
-		'deform_bone_boundary_box': vertex_group_boundary_boxes,
+		'deform_bone_boundary_box': list(vertex_group_boundary_boxes_dict.values()),
 		'bounding_sphere': model_bounding_sphere, # root_obj.get("bounding_sphere", [0.0, 0.0, 0.0, 0.0]),
 		# bg_reaction_data,
 		'vec3_11': root_obj.get("vec3_11", [0.0, 0.0, 0.0]),
@@ -715,6 +744,7 @@ class ExportSomeData(Operator, ExportHelper):
 	)
 	export_scale: bpy.props.FloatProperty(name="Model Export Scale", default=1.0)
 	create_model_subfolders: bpy.props.BoolProperty(name="Create model/model_streaming Folders", default=False)
+	
 
 	def draw(self, context):
 		layout = self.layout
@@ -813,7 +843,7 @@ class ExportSomeData(Operator, ExportHelper):
 			utils_set_mode('OBJECT') # Set Object Mode
 
 			# Get model's armature and mesh
-			selected_obj = context.object # Get active object
+			selected_obj = orignial_active_object = context.object # Get active object
 
 			if selected_obj.type in ('ARMATURE', 'EMPTY'):
 				# Duplicate object and link to export scene
@@ -867,6 +897,7 @@ class ExportSomeData(Operator, ExportHelper):
 				for obj in export_collection.objects:
 					bpy.data.objects.remove(obj)
 				bpy.data.collections.remove(export_collection)
+				utils_select_active(orignial_active_object) # Restore active object selection after export
 			except Exception as err: 
 				raise err
 				pass

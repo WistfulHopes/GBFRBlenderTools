@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Granblue Fantasy Relink Blender Tools",
     "author": "AlphaSatanOmega & WistfulHopes",
-    "version": (2, 0, 0),
+    "version": (2, 0, 1),
     "blender": (4, 0, 0),
     "location": "File > Import/Export | View 3D > Tool Shelf > GBFR",
     "description": "Tool to import & export models from Granblue Fantasy Relink",

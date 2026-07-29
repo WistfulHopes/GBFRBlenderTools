@@ -221,8 +221,7 @@ def utils_select_0_weight_vertices(mesh):
 	return zero_weight_vert_count
 
 # Limit and Normalize all vertex weights
-def UtilsLimitAndNormalizeWeights(mesh, limit_number=8):
-	# for vg in mesh.vertex_groups: # <- Unnecessary
+def utils_limit_and_normalize_weights(mesh, limit_number=8):
 	# limit total weight group assignments per vertex
 	bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=limit_number)
 	# normalize all weights
